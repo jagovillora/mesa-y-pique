@@ -780,16 +780,34 @@ async function saveGame() {
   } catch(e) { toast('Error al guardar: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
 }
+async function fetchBGGImage(name) {
+  const p = new DOMParser();
+  // Exact search first, then fuzzy
+  for (const exact of ['&exact=1', '']) {
+    const xml = await fetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(name)}&type=boardgame${exact}`).then(r => r.text());
+    const id = p.parseFromString(xml, 'text/xml').querySelector('item')?.getAttribute('id');
+    if (!id) continue;
+    // BGG sometimes queues — retry once
+    for (let i = 0; i < 2; i++) {
+      if (i) await new Promise(r => setTimeout(r, 2500));
+      const thing = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}`).then(r => r.text());
+      if (thing.includes('try again later') || thing.includes('processing')) continue;
+      let img = p.parseFromString(thing, 'text/xml').querySelector('image')?.textContent?.trim();
+      if (img) return img.startsWith('//') ? 'https:' + img : img;
+    }
+    return null;
+  }
+  return null;
+}
 async function fetchAndSaveImage(game) {
   try {
-    const res = await fetch(`/api/game-image?name=${encodeURIComponent(game.name)}`);
-    const { image } = await res.json();
+    const image = await fetchBGGImage(game.name);
     if (!image) return;
     game.image = image;
     await dbUpdateGame(game);
     renderGames();
     if (currentDetailId === game.id) showDetail(game.id);
-  } catch { /* imagen opcional, fallo silencioso */ }
+  } catch { }
 }
 async function fetchImageForModal() {
   const name = document.getElementById('g-name').value.trim();
@@ -797,8 +815,7 @@ async function fetchImageForModal() {
   const btn = document.getElementById('g-img-search-btn');
   btn.textContent = 'Buscando…'; btn.disabled = true;
   try {
-    const res = await fetch(`/api/game-image?name=${encodeURIComponent(name)}`);
-    const { image } = await res.json();
+    const image = await fetchBGGImage(name);
     if (image) { document.getElementById('g-image').value = image; toast('Imagen encontrada'); }
     else toast('No se encontró en BGG', 'err');
   } catch { toast('Error al buscar imagen', 'err'); }
