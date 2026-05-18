@@ -208,6 +208,14 @@
   .ms-btn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a0f08;box-shadow:0 4px 14px rgba(232,116,59,.3)}
   .rank-controls select{max-width:260px;border-radius:999px}
 
+  /* BGG search dropdown */
+  .bgg-wrap{position:relative}
+  .bgg-drop{position:absolute;top:calc(100% + 2px);left:0;right:0;background:var(--panel2);border:1px solid var(--accent);border-radius:9px;z-index:200;max-height:260px;overflow-y:auto;display:none;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+  .bgg-item{padding:10px 14px;cursor:pointer;font-size:.88rem;display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+  .bgg-item:last-child{border-bottom:none}
+  .bgg-item:hover{background:var(--panel)}
+  .bgg-year{color:var(--ink-soft);font-size:.76rem;white-space:nowrap;flex-shrink:0}
+
   /* Auth */
   .auth-bar{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px 0 0;flex-wrap:wrap}
   .user-chip{background:var(--panel);border:1px solid var(--line);padding:5px 14px;border-radius:999px;font-size:.82rem;color:var(--ink-soft);display:none}
@@ -318,7 +326,10 @@
     <h3 id="game-modal-title">Añadir juego</h3>
     <input type="hidden" id="g-id">
     <label>Nombre del juego *</label>
-    <input id="g-name" placeholder="Terraforming Mars">
+    <div class="bgg-wrap">
+      <input id="g-name" placeholder="Busca en BoardGameGeek…" autocomplete="off" oninput="onBGGInput()">
+      <div id="bgg-drop" class="bgg-drop"></div>
+    </div>
     <label>Jugadores · Duración</label>
     <input id="g-meta" placeholder="2-5 jug · 90-120 min">
     <label>Instrucciones / reglas resumidas</label>
@@ -745,6 +756,7 @@ function showDetail(id) {
 const block = (t, c) => c ? `<div class="block"><h4>${t}</h4><p>${esc(c)}</p></div>` : '';
 
 function openGameModal(id) {
+  hideBGGDrop();
   document.getElementById('game-overlay').classList.add('show');
   const t = document.getElementById('game-modal-title');
   const F = k => document.getElementById('g-' + k);
@@ -785,18 +797,76 @@ async function saveGame() {
   } catch(e) { toast('Error al guardar: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
 }
+/* BGG search */
+let _bggTimer = null, _bggItems = [];
+
+function onBGGInput() {
+  const q = document.getElementById('g-name').value.trim();
+  clearTimeout(_bggTimer);
+  hideBGGDrop();
+  if (q.length < 2) return;
+  _bggTimer = setTimeout(() => bggSearch(q), 420);
+}
+async function bggSearch(q) {
+  try {
+    const xml = await fetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(q)}&type=boardgame`).then(r => r.text());
+    _bggItems = [...new DOMParser().parseFromString(xml, 'text/xml').querySelectorAll('item')]
+      .slice(0, 9)
+      .map(el => ({
+        id: el.getAttribute('id'),
+        name: el.querySelector('name')?.getAttribute('value') || '',
+        year: el.querySelector('yearpublished')?.getAttribute('value') || ''
+      }))
+      .filter(g => g.name);
+    const drop = document.getElementById('bgg-drop');
+    if (!_bggItems.length) { hideBGGDrop(); return; }
+    drop.innerHTML = _bggItems.map((g, i) =>
+      `<div class="bgg-item" data-i="${i}"><span>${esc(g.name)}</span><span class="bgg-year">${g.year}</span></div>`
+    ).join('');
+    drop.querySelectorAll('.bgg-item').forEach(el =>
+      el.addEventListener('click', () => pickBGG(_bggItems[+el.dataset.i]))
+    );
+    drop.style.display = 'block';
+  } catch { hideBGGDrop(); }
+}
+function hideBGGDrop() {
+  const d = document.getElementById('bgg-drop');
+  if (d) { d.style.display = 'none'; d.innerHTML = ''; }
+}
+async function pickBGG({ id, name }) {
+  hideBGGDrop();
+  document.getElementById('g-name').value = name;
+  // Fetch details (image + meta) — BGG queues the first call, retry up to 3x
+  for (let i = 0; i < 3; i++) {
+    if (i) await new Promise(r => setTimeout(r, i * 3000));
+    try {
+      const xml = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}`).then(r => r.text());
+      if (xml.includes('try again later') || xml.includes('<message>')) continue;
+      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+      const minP = doc.querySelector('minplayers')?.getAttribute('value') || '';
+      const maxP = doc.querySelector('maxplayers')?.getAttribute('value') || '';
+      const time = doc.querySelector('playingtime')?.getAttribute('value') || '';
+      let img  = doc.querySelector('image')?.textContent?.trim() || '';
+      if (img.startsWith('//')) img = 'https:' + img;
+      const players = minP ? (minP === maxP ? `${minP} jug` : `${minP}-${maxP} jug`) : '';
+      const meta = [players, time ? `${time} min` : ''].filter(Boolean).join(' · ');
+      if (meta) document.getElementById('g-meta').value = meta;
+      if (img)  { document.getElementById('g-image').value = img; toast('Imagen cargada desde BGG'); }
+      return;
+    } catch { continue; }
+  }
+}
+
 async function fetchBGGImage(name) {
   const p = new DOMParser();
-  // Exact search first, then fuzzy
   for (const exact of ['&exact=1', '']) {
     const xml = await fetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(name)}&type=boardgame${exact}`).then(r => r.text());
     const id = p.parseFromString(xml, 'text/xml').querySelector('item')?.getAttribute('id');
     if (!id) continue;
-    // BGG sometimes queues — retry once
-    for (let i = 0; i < 2; i++) {
-      if (i) await new Promise(r => setTimeout(r, 2500));
+    for (let i = 0; i < 3; i++) {
+      if (i) await new Promise(r => setTimeout(r, i * 3500));
       const thing = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}`).then(r => r.text());
-      if (thing.includes('try again later') || thing.includes('processing')) continue;
+      if (thing.includes('try again later') || thing.includes('<message>')) continue;
       let img = p.parseFromString(thing, 'text/xml').querySelector('image')?.textContent?.trim();
       if (img) return img.startsWith('//') ? 'https:' + img : img;
     }
@@ -1069,11 +1139,14 @@ function renderRanking() {
 }
 
 /* Utils */
-function closeModal(id)  { document.getElementById(id).classList.remove('show'); }
+function closeModal(id)  { document.getElementById(id).classList.remove('show'); hideBGGDrop(); }
 function esc(s)          { return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function fmtDate(d)      { if (!d) return ''; const [y, m, da] = d.split('-'); return `${da}/${m}/${y}`; }
 document.querySelectorAll('.overlay').forEach(o => o.onclick = e => { if (e.target === o) o.classList.remove('show'); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.overlay.show').forEach(o => o.classList.remove('show')); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { document.querySelectorAll('.overlay.show').forEach(o => o.classList.remove('show')); hideBGGDrop(); }
+});
+document.addEventListener('click', e => { if (!e.target.closest('.bgg-wrap')) hideBGGDrop(); });
 
 load();
 </script>
