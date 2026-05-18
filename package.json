@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "groq-sdk": "^0.9.0",
+    "pdf-parse": "^1.1.1",
     "@supabase/supabase-js": "^2.0.0"
   }
 }

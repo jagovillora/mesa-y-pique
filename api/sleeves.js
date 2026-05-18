@@ -1,4 +1,4 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 
 const SYSTEM = `Eres un experto en juegos de mesa y fundas para cartas. Dado el nombre de un juego, indica qué fundas se necesitan para enfundar TODAS las cartas de la edición base.
 
@@ -8,7 +8,7 @@ Para cada tipo de carta proporciona:
 - Anchura exacta en mm
 - Altura exacta en mm
 - Cantidad (exacta si la conoces, aproximada si no)
-- Notas opcionales (expansiones, variantes de edición, etc.)
+- Notas opcionales
 
 Devuelve SOLO JSON válido sin texto adicional:
 {
@@ -27,20 +27,26 @@ Devuelve SOLO JSON válido sin texto adicional:
   "notes": "notas generales o null"
 }
 
-Si el juego no existe o no tiene cartas: {"found": false, "game": "nombre"}
-Sé preciso. Si no estás seguro de la cantidad exacta, pon una estimación e indícalo en notes.`;
+Si el juego no existe o no tiene cartas: {"found": false, "game": "nombre"}`;
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   const { game } = req.body || {};
   if (!game?.trim()) return res.status(400).json({ error: 'Falta el nombre del juego' });
 
-  const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   try {
-    const result = await model.generateContent(`${SYSTEM}\n\nJuego: ${game.trim()}`);
-    let txt = result.response.text().trim();
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: `Juego: ${game.trim()}` }
+      ],
+      max_tokens: 1024,
+      response_format: { type: 'json_object' }
+    });
+
+    let txt = completion.choices[0].message.content.trim();
     txt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
     const a = txt.indexOf('{'), z = txt.lastIndexOf('}');
     if (a >= 0 && z > a) txt = txt.slice(a, z + 1);
