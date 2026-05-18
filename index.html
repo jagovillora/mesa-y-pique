@@ -797,36 +797,32 @@ async function saveGame() {
   } catch(e) { toast('Error al guardar: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
 }
-/* BGG search */
-let _bggTimer = null, _bggItems = [];
+/* Wikipedia game search */
+let _wikiTimer = null, _wikiItems = [];
 
 function onBGGInput() {
   const q = document.getElementById('g-name').value.trim();
-  clearTimeout(_bggTimer);
+  clearTimeout(_wikiTimer);
   hideBGGDrop();
   if (q.length < 2) return;
-  _bggTimer = setTimeout(() => bggSearch(q), 420);
+  _wikiTimer = setTimeout(() => wikiSearch(q), 420);
 }
-async function bggSearch(q) {
+async function wikiSearch(q) {
   try {
-    const r = await fetch(`/api/bgg?path=/xmlapi2/search?query=${encodeURIComponent(q)}&type=boardgame`);
-    if (!r.ok) { hideBGGDrop(); return; }
-    const xml = await r.text();
-    _bggItems = [...new DOMParser().parseFromString(xml, 'text/xml').querySelectorAll('item')]
-      .slice(0, 9)
-      .map(el => ({
-        id: el.getAttribute('id'),
-        name: el.querySelector('name')?.getAttribute('value') || '',
-        year: el.querySelector('yearpublished')?.getAttribute('value') || ''
-      }))
-      .filter(g => g.name);
+    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q + ' board game')}&srlimit=8&format=json&origin=*`;
+    const data = await fetch(url).then(r => r.json());
+    _wikiItems = (data.query?.search || []).slice(0, 7).map(r => ({
+      title: r.title,
+      label: r.title.replace(/\s*\(.*?\)\s*$/g, ''),
+      year: (r.snippet.match(/\b(19|20)\d{2}\b/) || [''])[0]
+    }));
     const drop = document.getElementById('bgg-drop');
-    if (!_bggItems.length) { hideBGGDrop(); return; }
-    drop.innerHTML = _bggItems.map((g, i) =>
-      `<div class="bgg-item" data-i="${i}"><span>${esc(g.name)}</span><span class="bgg-year">${g.year}</span></div>`
+    if (!_wikiItems.length) { hideBGGDrop(); return; }
+    drop.innerHTML = _wikiItems.map((g, i) =>
+      `<div class="bgg-item" data-i="${i}"><span>${esc(g.label)}</span><span class="bgg-year">${g.year}</span></div>`
     ).join('');
     drop.querySelectorAll('.bgg-item').forEach(el =>
-      el.addEventListener('click', () => pickBGG(_bggItems[+el.dataset.i]))
+      el.addEventListener('click', () => pickWiki(_wikiItems[+el.dataset.i]))
     );
     drop.style.display = 'block';
   } catch { hideBGGDrop(); }
@@ -835,50 +831,28 @@ function hideBGGDrop() {
   const d = document.getElementById('bgg-drop');
   if (d) { d.style.display = 'none'; d.innerHTML = ''; }
 }
-async function pickBGG({ id, name }) {
+async function pickWiki({ title, label }) {
   hideBGGDrop();
-  document.getElementById('g-name').value = name;
-  // Fetch details (image + meta) — BGG queues the first call, retry up to 3x
-  for (let i = 0; i < 3; i++) {
-    if (i) await new Promise(r => setTimeout(r, i * 3000));
-    try {
-      const r2 = await fetch(`/api/bgg?path=/xmlapi2/thing?id=${id}`);
-      if (!r2.ok) return;
-      const xml = await r2.text();
-      if (xml.includes('try again later') || xml.includes('<message>')) continue;
-      const doc = new DOMParser().parseFromString(xml, 'text/xml');
-      const minP = doc.querySelector('minplayers')?.getAttribute('value') || '';
-      const maxP = doc.querySelector('maxplayers')?.getAttribute('value') || '';
-      const time = doc.querySelector('playingtime')?.getAttribute('value') || '';
-      let img  = doc.querySelector('image')?.textContent?.trim() || '';
-      if (img.startsWith('//')) img = 'https:' + img;
-      const players = minP ? (minP === maxP ? `${minP} jug` : `${minP}-${maxP} jug`) : '';
-      const meta = [players, time ? `${time} min` : ''].filter(Boolean).join(' · ');
-      if (meta) document.getElementById('g-meta').value = meta;
-      if (img)  { document.getElementById('g-image').value = img; toast('Imagen cargada desde BGG'); }
-      return;
-    } catch { continue; }
-  }
+  document.getElementById('g-name').value = label;
+  try {
+    const img = await fetchWikiImage(title);
+    if (img) { document.getElementById('g-image').value = img; toast('Imagen cargada desde Wikipedia'); }
+  } catch { }
+}
+
+async function fetchWikiImage(title) {
+  try {
+    const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d.originalimage?.source || d.thumbnail?.source || null;
+  } catch { return null; }
 }
 
 async function fetchBGGImage(name) {
-  const p = new DOMParser();
-  for (const exact of ['&exact=1', '']) {
-    const sr = await fetch(`/api/bgg?path=/xmlapi2/search?query=${encodeURIComponent(name)}&type=boardgame${exact}`);
-    if (!sr.ok) return null;
-    const xml = await sr.text();
-    const id = p.parseFromString(xml, 'text/xml').querySelector('item')?.getAttribute('id');
-    if (!id) continue;
-    for (let i = 0; i < 3; i++) {
-      if (i) await new Promise(r => setTimeout(r, i * 3500));
-      const tr = await fetch(`/api/bgg?path=/xmlapi2/thing?id=${id}`);
-      if (!tr.ok) return null;
-      const thing = await tr.text();
-      if (thing.includes('try again later') || thing.includes('<message>')) continue;
-      let img = p.parseFromString(thing, 'text/xml').querySelector('image')?.textContent?.trim();
-      if (img) return img.startsWith('//') ? 'https:' + img : img;
-    }
-    return null;
+  for (const t of [`${name} (board game)`, `${name} (game)`, name]) {
+    const img = await fetchWikiImage(t);
+    if (img) return img;
   }
   return null;
 }
