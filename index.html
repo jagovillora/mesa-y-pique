@@ -221,25 +221,6 @@
   .toast.err{border-left:3px solid var(--accent)}
   @keyframes toast-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 
-  /* Sleeves */
-  .sleeve-search-bar{display:flex;gap:10px;margin-bottom:24px;max-width:520px}
-  .sleeve-search-bar input{flex:1}
-  .sleeve-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:14px;margin-bottom:24px}
-  .sleeve-card{background:linear-gradient(160deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:6px}
-  .sleeve-size-badge{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--accent);color:var(--accent);padding:4px 10px;border-radius:999px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;width:fit-content}
-  .sleeve-dim{color:var(--accent2)}
-  .sleeve-type{font-weight:700;font-size:.92rem}
-  .sleeve-qty{font-family:'Fraunces',serif;font-size:2.1rem;font-weight:600;line-height:1;margin-top:4px}
-  .sleeve-unit{font-size:.8rem;color:var(--ink-soft);font-family:inherit;font-weight:400}
-  .sleeve-packs{color:var(--accent2);font-size:.82rem;font-weight:600}
-  .sleeve-notes{color:var(--ink-soft);font-size:.76rem;line-height:1.45;border-top:1px solid var(--line);padding-top:8px;margin-top:2px}
-  .sleeves-summary{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px}
-  .sleeves-summary h4{font-size:.76rem;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);margin-bottom:12px}
-  .sleeve-sum-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);gap:12px;flex-wrap:wrap}
-  .sleeve-sum-row:last-of-type{border-bottom:none}
-  .sleeve-size-tag{background:var(--panel2);border:1px solid var(--line);color:var(--ink-soft);padding:3px 10px;border-radius:999px;font-size:.76rem}
-  .sleeve-game-title{font-family:'Fraunces',serif;font-size:1.5rem;font-weight:600;margin:24px 0 16px}
-
   /* Mobile */
   @media(max-width:520px){
     .podium{grid-template-columns:1fr;align-items:stretch}
@@ -266,7 +247,6 @@
   <button class="tab" data-view="ranking">🏆 Ranking global</button>
   <button class="tab" data-view="matches">📋 Partidas</button>
   <button class="tab" data-view="players">👥 Jugadores</button>
-  <button class="tab" data-view="sleeves">🃏 Fundas</button>
 </nav>
 
 <main>
@@ -316,19 +296,6 @@
       </select>
     </div>
     <div id="matches-list" class="loading">Cargando…</div>
-  </section>
-
-  <!-- FUNDAS -->
-  <section class="view" id="view-sleeves">
-    <div class="section-head">
-      <h2>Calculadora de fundas</h2>
-    </div>
-    <div class="note" style="margin-bottom:20px">Busca cualquier juego de mesa y te digo cuántas fundas necesitas y de qué tamaño.</div>
-    <div class="sleeve-search-bar">
-      <input id="sleeve-input" placeholder="Ej: Terraforming Mars, Catan, Arkham Horror…" onkeydown="if(event.key==='Enter')searchSleeves()">
-      <button class="btn" id="sleeve-btn" onclick="searchSleeves()">Buscar</button>
-    </div>
-    <div id="sleeves-result"></div>
   </section>
 
   <!-- JUGADORES -->
@@ -454,6 +421,11 @@ async function load() {
 
   updateAuthUI();
   renderGames(); renderRanking(); renderMatches(); renderPlayers(); refreshGameSelects();
+
+  // Auto-fetch missing images in background (staggered to avoid BGG rate limits)
+  DB.games.filter(g => !g.image).forEach((g, i) =>
+    setTimeout(() => fetchAndSaveImage(g), i * 3500)
+  );
 }
 
 /* Persistencia individual en Supabase */
@@ -1094,102 +1066,6 @@ function renderRanking() {
     ${podium.length >= 1 ? `<div class="podium">${podHtml}</div>` : ''}
     <table><thead><tr><th>#</th><th>Jugador</th><th>${hi}</th><th>Victorias</th><th>Partidas</th><th>Σ Puntos</th></tr></thead>
     <tbody>${arr.map((p, i) => `<tr class="${i === 0 ? 'crown-row' : ''}"><td class="pos">${i === 0 ? '👑' : i + 1}</td><td><b>${esc(p.name)}</b></td><td><b>${RANK_MODE === 'points' ? p.pts : p.wins}</b></td><td>${p.wins}</td><td>${p.played}</td><td>${p.totalScore}</td></tr>`).join('')}</tbody></table>`;
-}
-
-/* SLEEVES */
-async function fetchBGGComponents(name) {
-  try {
-    const p = new DOMParser();
-    let id = null;
-    for (const exact of ['&exact=1', '']) {
-      const xml = await fetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(name)}&type=boardgame${exact}`).then(r => r.text());
-      id = p.parseFromString(xml, 'text/xml').querySelector('item')?.getAttribute('id');
-      if (id) break;
-    }
-    if (!id) return null;
-    for (let i = 0; i < 2; i++) {
-      if (i) await new Promise(r => setTimeout(r, 2500));
-      const xml = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}`).then(r => r.text());
-      if (xml.includes('try again later')) continue;
-      const doc = p.parseFromString(xml, 'text/xml');
-      return {
-        name: doc.querySelector('name[type="primary"]')?.getAttribute('value') || name,
-        description: doc.querySelector('description')?.textContent || ''
-      };
-    }
-    return null;
-  } catch { return null; }
-}
-
-async function searchSleeves() {
-  const inp  = document.getElementById('sleeve-input');
-  const res  = document.getElementById('sleeves-result');
-  const btn  = document.getElementById('sleeve-btn');
-  const name = inp.value.trim();
-  if (!name) { toast('Escribe el nombre de un juego', 'err'); return; }
-
-  btn.disabled = true; btn.textContent = 'Buscando en BGG…';
-  res.innerHTML = '<div class="loading">Consultando BoardGameGeek…</div>';
-  const bggData = await fetchBGGComponents(name);
-
-  btn.textContent = 'Calculando…';
-  res.innerHTML = '<div class="loading">Calculando fundas…</div>';
-
-  try {
-    const r = await fetch('/api/sleeves', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game: name, bggData })
-    });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
-
-    if (!data.found) {
-      res.innerHTML = `<div class="empty"><div class="big">🃏</div><p>No encontré "${esc(name)}" o no tiene cartas que enfundar.</p></div>`;
-      return;
-    }
-
-    // Group by size for summary
-    const totals = {};
-    data.sleeves.forEach(s => {
-      const key = `${s.size}||${s.width}||${s.height}`;
-      totals[key] = (totals[key] || 0) + (s.quantity || 0);
-    });
-
-    const summaryRows = Object.entries(totals).map(([key, qty]) => {
-      const [sz, w, h] = key.split('||');
-      const packs = Math.ceil(qty / 100);
-      return `<div class="sleeve-sum-row">
-        <span class="sleeve-size-tag">${esc(sz)} ${w}×${h}mm</span>
-        <span><b>${qty}</b> fundas · <b>${packs}</b> sobre${packs !== 1 ? 's' : ''}</span>
-      </div>`;
-    }).join('');
-
-    const cards = data.sleeves.map(s => {
-      const packs = Math.ceil((s.quantity || 0) / 100);
-      return `<div class="sleeve-card">
-        <div class="sleeve-size-badge">${esc(s.size || '?')}<span class="sleeve-dim">${s.width}×${s.height}mm</span></div>
-        <div class="sleeve-type">${esc(s.type)}</div>
-        <div class="sleeve-qty">${s.quantity}<span class="sleeve-unit"> fundas</span></div>
-        <div class="sleeve-packs">${packs} sobre${packs !== 1 ? 's' : ''} de 100</div>
-        ${s.notes ? `<div class="sleeve-notes">${esc(s.notes)}</div>` : ''}
-      </div>`;
-    }).join('');
-
-    res.innerHTML = `
-      <div class="sleeve-game-title">${esc(data.game)}</div>
-      <div class="sleeve-grid">${cards}</div>
-      <div class="sleeves-summary">
-        <h4>Resumen de compra</h4>
-        ${summaryRows}
-        <div class="note" style="margin-top:10px">Sobres estándar = 100 fundas. Datos estimados por IA — verifica antes de comprar.</div>
-      </div>
-      ${data.notes ? `<div class="note" style="margin-top:14px">ℹ️ ${esc(data.notes)}</div>` : ''}`;
-  } catch(e) {
-    res.innerHTML = `<div class="empty"><div class="big">⚠️</div><p>Error: ${esc(e.message)}</p></div>`;
-  } finally {
-    btn.disabled = false; btn.textContent = 'Buscar';
-  }
 }
 
 /* Utils */
