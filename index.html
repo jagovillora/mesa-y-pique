@@ -199,6 +199,12 @@
   .ms-btn:hover{color:var(--ink)}
   .ms-btn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a0f08;box-shadow:0 4px 14px rgba(232,116,59,.3)}
   .rank-controls select{max-width:260px;border-radius:999px}
+
+  /* Auth */
+  .auth-bar{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px 0 0;flex-wrap:wrap}
+  .user-chip{background:var(--panel);border:1px solid var(--line);padding:5px 14px;border-radius:999px;font-size:.82rem;color:var(--ink-soft);display:none}
+  .user-chip.admin{border-color:var(--gold);color:var(--gold)}
+  .admin-only,.auth-only{display:none}
 </style>
 </head>
 <body>
@@ -207,6 +213,10 @@
 <header>
   <div class="logo">Mesa <span class="amp">&amp;</span> Pique</div>
   <div class="tag">Tu biblioteca de juegos de mesa · Rankings · El pique eterno</div>
+  <div class="auth-bar">
+    <div id="user-chip" class="user-chip"></div>
+    <button class="btn sm" id="auth-btn" onclick="signIn()">Entrar con Google</button>
+  </div>
 </header>
 
 <nav>
@@ -222,8 +232,8 @@
     <div class="section-head">
       <h2>Mis juegos</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn ghost" onclick="openPdfModal()">📄 Desde PDF</button>
-        <button class="btn" onclick="openGameModal()">+ Añadir juego</button>
+        <button class="btn ghost admin-only" onclick="openPdfModal()">📄 Desde PDF</button>
+        <button class="btn admin-only" onclick="openGameModal()">+ Añadir juego</button>
       </div>
     </div>
     <div class="filter-bar" style="margin-bottom:16px">
@@ -255,7 +265,7 @@
   <section class="view" id="view-matches">
     <div class="section-head">
       <h2>Historial de partidas</h2>
-      <button class="btn" onclick="openMatchModal()">+ Registrar partida</button>
+      <button class="btn auth-only" onclick="openMatchModal()">+ Registrar partida</button>
     </div>
     <div id="matches-list" class="loading">Cargando…</div>
   </section>
@@ -266,7 +276,7 @@
       <h2>Jugadores</h2>
     </div>
     <div class="note" style="margin-bottom:16px">Registra aquí los nombres oficiales. Así se evitan duplicados (Álex / alex / Alex) y el ranking cuenta bien.</div>
-    <div class="add-player-bar">
+    <div class="add-player-bar admin-only">
       <input id="new-player" placeholder="Nombre del jugador" onkeydown="if(event.key==='Enter')addPlayer()">
       <button class="btn" onclick="addPlayer()">+ Añadir</button>
     </div>
@@ -332,12 +342,23 @@
 </div>
 
 <script>
-let db = null; // Supabase client
+let db = null;
 const DB = { games: [], matches: [], players: [] };
+let currentUser = null;
+const ADMIN_EMAIL = 'jagovillora@gmail.com';
+const isAdmin = () => currentUser?.email === ADMIN_EMAIL;
+const isAuth  = () => currentUser !== null;
 
 async function initSupabase() {
   const cfg = await fetch('/api/config').then(r => r.json());
   db = supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey);
+  db.auth.onAuthStateChange((event, session) => {
+    currentUser = session?.user || null;
+    updateAuthUI();
+    if (event === 'SIGNED_IN') { renderGames(); renderMatches(); renderPlayers(); renderRanking(); }
+  });
+  const { data: { session } } = await db.auth.getSession();
+  currentUser = session?.user || null;
 }
 
 async function load() {
@@ -364,6 +385,7 @@ async function load() {
     ? 'Sistema de liga: victoria = 3 pts · 2º puesto = 1 pt. Suma de todas las partidas.'
     : 'Modo victorias: solo cuenta el nº de partidas ganadas. El llorica que se prepare. 😎';
 
+  updateAuthUI();
   renderGames(); renderRanking(); renderMatches(); renderPlayers(); refreshGameSelects();
 }
 
@@ -383,7 +405,7 @@ function renderPlayers() {
   el.className = 'players-grid';
   el.innerHTML = [...DB.players].sort((a, b) => a.localeCompare(b)).map(n => {
     const played = DB.matches.filter(m => m.players.some(p => p.name === n)).length;
-    return `<div class="pchip"><div><div class="pn">${esc(n)}</div><div class="pstat">${played} partidas</div></div><button class="px" onclick="delPlayer('${esc(n).replace(/'/g, "\\'")}')" title="Eliminar">✕</button></div>`;
+    return `<div class="pchip"><div><div class="pn">${esc(n)}</div><div class="pstat">${played} partidas</div></div>${isAdmin() ? `<button class="px" onclick="delPlayer('${esc(n).replace(/'/g, "\\'")}')" title="Eliminar">✕</button>` : ''}</div>`;
   }).join('');
 }
 async function addPlayer() {
@@ -553,6 +575,34 @@ SI YA CONOCES WINGSPAN: las acciones se pagan con monedas no con cubos; exploras
   DB.players.push(...seedPlayers);
 }
 
+/* AUTH */
+async function signIn() {
+  await db.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+}
+async function signOut() {
+  await db.auth.signOut();
+  currentUser = null;
+  updateAuthUI();
+  renderGames(); renderMatches(); renderPlayers(); renderRanking();
+}
+function updateAuthUI() {
+  const btn  = document.getElementById('auth-btn');
+  const chip = document.getElementById('user-chip');
+  if (currentUser) {
+    btn.textContent = 'Cerrar sesión';
+    btn.onclick = signOut;
+    chip.style.display = '';
+    chip.className = 'user-chip' + (isAdmin() ? ' admin' : '');
+    chip.textContent = (isAdmin() ? '👑 ' : '') + currentUser.email;
+  } else {
+    btn.textContent = 'Entrar con Google';
+    btn.onclick = signIn;
+    chip.style.display = 'none';
+  }
+  document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin() ? '' : 'none');
+  document.querySelectorAll('.auth-only').forEach(el  => el.style.display = isAuth()  ? '' : 'none');
+}
+
 /* NAV */
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
@@ -616,9 +666,9 @@ function showDetail(id) {
       ${(g.cats && g.cats.length) ? `<div class="block"><h4>Categorías de puntuación</h4><div class="breakdown">${g.cats.map(c => `<span class="bd">${esc(c)}</span>`).join('')}</div></div>` : ''}
       ${matchHistoryHtml}
       <div style="display:flex;gap:10px;margin-top:24px;flex-wrap:wrap">
-        <button class="btn sm" onclick="openMatchModalForGame('${g.id}')">+ Registrar partida</button>
-        <button class="btn ghost sm" onclick="openGameModal('${g.id}')">Editar</button>
-        <button class="btn ghost sm" onclick="delGame('${g.id}')">Eliminar juego</button>
+        ${isAuth()  ? `<button class="btn sm" onclick="openMatchModalForGame('${g.id}')">+ Registrar partida</button>` : ''}
+        ${isAdmin() ? `<button class="btn ghost sm" onclick="openGameModal('${g.id}')">Editar</button>` : ''}
+        ${isAdmin() ? `<button class="btn ghost sm" onclick="delGame('${g.id}')">Eliminar juego</button>` : ''}
       </div>
     </div>`;
   goView('detail');
@@ -832,7 +882,7 @@ function renderMatches() {
     return `<div class="match">
       <div class="top">
         <span class="gm">${g ? esc(g.name) : '(juego eliminado)'}</span>
-        <span class="dt">${fmtDate(m.date)} · <span class="del" onclick="delMatch('${m.id}')">borrar</span></span>
+        <span class="dt">${fmtDate(m.date)}${isAdmin() ? ` · <span class="del" onclick="delMatch('${m.id}')">borrar</span>` : ''}</span>
       </div>
       <div class="scores">${ps.map(p => `<span class="sc${p.score === max ? ' win' : ''}">${p.score === max ? '👑 ' : ''}${esc(p.name)} · ${p.score}</span>`).join('')}</div>
       ${ps.some(p => p.breakdown) ? `<div class="breakdown">${ps.map(p => p.breakdown ? `<span class="bd"><b>${esc(p.name)}:</b> ${Object.entries(p.breakdown).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')}</span>` : '').join('')}</div>` : ''}
