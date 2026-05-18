@@ -36,10 +36,7 @@ module.exports = async function handler(req, res) {
   if (!game?.trim()) return res.status(400).json({ error: 'Falta el nombre del juego' });
 
   const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-  const model = genAI.getGenerativeModel(
-    { model: 'gemini-1.5-flash' },
-    { apiVersion: 'v1' }
-  );
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   try {
     const result = await model.generateContent(`${SYSTEM}\n\nJuego: ${game.trim()}`);
