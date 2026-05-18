@@ -809,7 +809,7 @@ function onBGGInput() {
 }
 async function bggSearch(q) {
   try {
-    const xml = await fetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(q)}&type=boardgame`).then(r => r.text());
+    const xml = await fetch(`/api/bgg?path=/xmlapi2/search?query=${encodeURIComponent(q)}&type=boardgame`).then(r => r.text());
     _bggItems = [...new DOMParser().parseFromString(xml, 'text/xml').querySelectorAll('item')]
       .slice(0, 9)
       .map(el => ({
@@ -840,7 +840,7 @@ async function pickBGG({ id, name }) {
   for (let i = 0; i < 3; i++) {
     if (i) await new Promise(r => setTimeout(r, i * 3000));
     try {
-      const xml = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}`).then(r => r.text());
+      const xml = await fetch(`/api/bgg?path=/xmlapi2/thing?id=${id}`).then(r => r.text());
       if (xml.includes('try again later') || xml.includes('<message>')) continue;
       const doc = new DOMParser().parseFromString(xml, 'text/xml');
       const minP = doc.querySelector('minplayers')?.getAttribute('value') || '';
@@ -860,12 +860,12 @@ async function pickBGG({ id, name }) {
 async function fetchBGGImage(name) {
   const p = new DOMParser();
   for (const exact of ['&exact=1', '']) {
-    const xml = await fetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(name)}&type=boardgame${exact}`).then(r => r.text());
+    const xml = await fetch(`/api/bgg?path=/xmlapi2/search?query=${encodeURIComponent(name)}&type=boardgame${exact}`).then(r => r.text());
     const id = p.parseFromString(xml, 'text/xml').querySelector('item')?.getAttribute('id');
     if (!id) continue;
     for (let i = 0; i < 3; i++) {
       if (i) await new Promise(r => setTimeout(r, i * 3500));
-      const thing = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}`).then(r => r.text());
+      const thing = await fetch(`/api/bgg?path=/xmlapi2/thing?id=${id}`).then(r => r.text());
       if (thing.includes('try again later') || thing.includes('<message>')) continue;
       let img = p.parseFromString(thing, 'text/xml').querySelector('image')?.textContent?.trim();
       if (img) return img.startsWith('//') ? 'https:' + img : img;
