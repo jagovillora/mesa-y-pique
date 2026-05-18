@@ -1,4 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
+const { createClient } = require('@supabase/supabase-js');
+
+const ADMIN_EMAIL = 'jagovillora@gmail.com';
 
 const PROMPT = `Eres un experto en juegos de mesa que redacta fichas de referencia para un grupo de amigos. Te paso el reglamento completo de un juego en PDF. Tu trabajo es leerlo ENTERO y producir una ficha tan detallada y bien escrita como la haría un humano experto que se ha leído el manual y quiere dejar una chuleta impecable para jugar y para enseñar a otros.
 
@@ -28,6 +31,14 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
+
+  const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
+  if (!token) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { data: { user }, error } = await sb.auth.getUser(token);
+    if (error || user?.email !== ADMIN_EMAIL) return res.status(403).json({ error: 'Solo el administrador puede importar PDFs' });
+  } catch { return res.status(403).json({ error: 'Token inválido' }); }
 
   const { pdf } = req.body || {};
   if (!pdf) return res.status(400).json({ error: 'Falta el PDF en base64' });

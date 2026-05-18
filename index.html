@@ -205,10 +205,25 @@
   .user-chip{background:var(--panel);border:1px solid var(--line);padding:5px 14px;border-radius:999px;font-size:.82rem;color:var(--ink-soft);display:none}
   .user-chip.admin{border-color:var(--gold);color:var(--gold)}
   .admin-only,.auth-only{display:none}
+
+  /* Toasts */
+  .toast-wrap{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;flex-direction:column;gap:8px;pointer-events:none;max-width:320px}
+  .toast{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 16px;font-size:.87rem;pointer-events:auto;animation:toast-in .2s ease;transition:opacity .3s;line-height:1.4}
+  .toast.ok{border-left:3px solid var(--green)}
+  .toast.err{border-left:3px solid var(--accent)}
+  @keyframes toast-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+  /* Mobile */
+  @media(max-width:520px){
+    .podium{grid-template-columns:1fr;align-items:stretch}
+    .pod.p1{transform:none;order:-1}
+    .modal{padding:20px}
+  }
 </style>
 </head>
 <body>
 <div class="grain"></div>
+<div id="toast-wrap" class="toast-wrap"></div>
 
 <header>
   <div class="logo">Mesa <span class="amp">&amp;</span> Pique</div>
@@ -266,6 +281,11 @@
     <div class="section-head">
       <h2>Historial de partidas</h2>
       <button class="btn auth-only" onclick="openMatchModal()">+ Registrar partida</button>
+    </div>
+    <div class="filter-bar" style="margin-bottom:16px">
+      <select id="matches-filter" onchange="renderMatches()" style="max-width:280px">
+        <option value="">Todos los juegos</option>
+      </select>
     </div>
     <div id="matches-list" class="loading">Cargando…</div>
   </section>
@@ -404,19 +424,25 @@ function renderPlayers() {
   if (!DB.players.length) { el.className = ''; el.innerHTML = `<div class="empty"><div class="big">👥</div><p>Sin jugadores. Añade los nombres del grupo.</p></div>`; return; }
   el.className = 'players-grid';
   el.innerHTML = [...DB.players].sort((a, b) => a.localeCompare(b)).map(n => {
-    const played = DB.matches.filter(m => m.players.some(p => p.name === n)).length;
-    return `<div class="pchip"><div><div class="pn">${esc(n)}</div><div class="pstat">${played} partidas</div></div>${isAdmin() ? `<button class="px" onclick="delPlayer('${esc(n).replace(/'/g, "\\'")}')" title="Eliminar">✕</button>` : ''}</div>`;
+    const ms = DB.matches.filter(m => m.players.some(p => p.name === n));
+    const played = ms.length;
+    const wins = ms.filter(m => {
+      const top = Math.max(...m.players.map(p => p.score));
+      return m.players.find(p => p.name === n)?.score === top;
+    }).length;
+    return `<div class="pchip"><div><div class="pn">${esc(n)}</div><div class="pstat">${played} partidas · ${wins} victorias</div></div>${isAdmin() ? `<button class="px" onclick="delPlayer('${esc(n).replace(/'/g, "\\'")}')" title="Eliminar">✕</button>` : ''}</div>`;
   }).join('');
 }
 async function addPlayer() {
   const inp = document.getElementById('new-player');
   const name = inp.value.trim(); if (!name) return;
-  if (DB.players.some(p => p.toLowerCase() === name.toLowerCase())) { alert('Ese jugador ya existe'); return; }
+  if (DB.players.some(p => p.toLowerCase() === name.toLowerCase())) { toast('Ese jugador ya existe', 'err'); return; }
   try {
     await dbAddPlayer(name);
     DB.players.push(name); inp.value = '';
     renderPlayers();
-  } catch(e) { alert('No se pudo guardar: ' + e.message); }
+    toast(`${name} añadido`);
+  } catch(e) { toast('No se pudo guardar: ' + e.message, 'err'); }
 }
 async function delPlayer(name) {
   if (!confirm(`¿Eliminar a "${name}" de la lista? (no borra sus partidas ya registradas)`)) return;
@@ -424,12 +450,13 @@ async function delPlayer(name) {
     await dbDeletePlayer(name);
     DB.players = DB.players.filter(p => p !== name);
     renderPlayers();
-  } catch(e) { alert('No se pudo eliminar'); }
+  } catch(e) { toast('No se pudo eliminar', 'err'); }
 }
 
 const uid = () => crypto.randomUUID();
 
 async function seedIfEmpty() {
+  if (!isAdmin()) return;
   if (DB.games.length || DB.matches.length) return;
 
   const tmId = uid();
@@ -575,6 +602,16 @@ SI YA CONOCES WINGSPAN: las acciones se pagan con monedas no con cubos; exploras
   DB.players.push(...seedPlayers);
 }
 
+/* TOASTS */
+function toast(msg, type = 'ok', ms = 3500) {
+  const w = document.getElementById('toast-wrap');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  w.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, ms);
+}
+
 /* AUTH */
 async function signIn() {
   await db.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
@@ -693,7 +730,7 @@ function openGameModal(id) {
 }
 async function saveGame() {
   const F = k => document.getElementById('g-' + k);
-  const name = F('name').value.trim(); if (!name) { alert('Pon un nombre'); return; }
+  const name = F('name').value.trim(); if (!name) { toast('Pon un nombre al juego', 'err'); return; }
   const cats = F('cats').value.split(',').map(s => s.trim()).filter(Boolean);
   const data = { name, meta: F('meta').value.trim(), rules: F('rules').value.trim(), setup: F('setup').value.trim(), notes: F('notes').value.trim(), cats };
   const gid = F('id').value;
@@ -710,7 +747,8 @@ async function saveGame() {
       await dbAddGame(g);
     }
     closeModal('game-overlay'); renderGames(); refreshGameSelects(); renderRanking();
-  } catch(e) { alert('Error al guardar: ' + e.message); }
+    toast(gid ? 'Juego actualizado' : `"${name}" añadido a la biblioteca`);
+  } catch(e) { toast('Error al guardar: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
 }
 async function delGame(id) {
@@ -719,7 +757,7 @@ async function delGame(id) {
     await dbDeleteGame(id);
     DB.games = DB.games.filter(x => x.id !== id);
     renderGames(); refreshGameSelects(); goView('games');
-  } catch(e) { alert('No se pudo eliminar'); }
+  } catch(e) { toast('No se pudo eliminar', 'err'); }
 }
 
 /* IMPORTAR DESDE PDF */
@@ -752,9 +790,13 @@ async function importFromPdf() {
   catch(e) { st.textContent = '⚠️ ' + e.message; goBtn.disabled = false; document.getElementById('pdf-cancel').disabled = false; return; }
 
   try {
+    const { data: { session } } = await db.auth.getSession();
     const resp = await fetch('/api/import-pdf', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {})
+      },
       body: JSON.stringify({ pdf: b64 })
     });
     const result = await resp.json();
@@ -769,7 +811,7 @@ async function importFromPdf() {
     DB.games.push(g);
     closeModal('pdf-overlay');
     renderGames(); refreshGameSelects(); renderRanking();
-    alert('✅ "' + g.name + '" añadido a tu biblioteca. Échale un ojo y edítalo si quieres ajustar algo.');
+    toast(`"${g.name}" añadido. Échale un ojo y edítalo si quieres ajustar algo.`);
   } catch(e) {
     st.textContent = '⚠️ ' + e.message;
   } finally {
@@ -779,13 +821,16 @@ async function importFromPdf() {
 
 /* MATCHES */
 function refreshGameSelects() {
-  const opts = DB.games.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
+  const sorted = [...DB.games].sort((a, b) => a.name.localeCompare(b.name));
+  const opts = sorted.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
   document.getElementById('m-game').innerHTML = opts || '<option value="">— Añade un juego primero —</option>';
-  const rf = document.getElementById('rank-filter');
-  rf.innerHTML = '<option value="">🌍 Todos los juegos (global)</option>' + DB.games.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
+  const gameOpts = '<option value="">Todos los juegos</option>' + opts;
+  document.getElementById('rank-filter').innerHTML = gameOpts.replace('Todos los juegos', '🌍 Todos los juegos (global)');
+  const mf = document.getElementById('matches-filter');
+  if (mf) { const prev = mf.value; mf.innerHTML = gameOpts; mf.value = prev; }
 }
 function openMatchModal() {
-  if (!DB.games.length) { alert('Primero añade un juego en la Biblioteca'); return; }
+  if (!DB.games.length) { toast('Primero añade un juego en la Biblioteca', 'err'); return; }
   document.getElementById('match-overlay').classList.add('show');
   document.getElementById('m-date').value = new Date().toISOString().slice(0, 10);
   buildScoreGrid();
@@ -841,7 +886,7 @@ function recalc() {
   });
 }
 async function saveMatch() {
-  const gid = document.getElementById('m-game').value; if (!gid) { alert('Elige un juego'); return; }
+  const gid = document.getElementById('m-game').value; if (!gid) { toast('Elige un juego', 'err'); return; }
   const g = DB.games.find(x => x.id === gid);
   const cats = (g && g.cats && g.cats.length) ? g.cats : null;
   let players = [];
@@ -859,7 +904,7 @@ async function saveMatch() {
       if (name && !isNaN(score)) players.push({ name, score });
     });
   }
-  if (players.length < 2) { alert('Pon al menos 2 jugadores'); return; }
+  if (players.length < 2) { toast('Pon al menos 2 jugadores', 'err'); return; }
   const match = { id: uid(), game_id: gid, date: document.getElementById('m-date').value, players };
   const btn = document.getElementById('match-save-btn');
   btn.disabled = true;
@@ -867,14 +912,17 @@ async function saveMatch() {
     await dbAddMatch(match);
     DB.matches.push(match);
     closeModal('match-overlay'); renderMatches(); renderRanking(); renderGames(); renderPlayers();
-  } catch(e) { alert('Error al guardar: ' + e.message); }
+    toast('✅ Partida guardada');
+  } catch(e) { toast('Error al guardar: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
 }
 function renderMatches() {
   const el = document.getElementById('matches-list');
-  if (!DB.matches.length) { el.className = ''; el.innerHTML = `<div class="empty"><div class="big">📋</div><p>Sin partidas todavía.</p></div>`; return; }
+  const filter = document.getElementById('matches-filter')?.value || '';
+  const all = DB.matches.filter(m => !filter || m.game_id === filter);
+  if (!all.length) { el.className = ''; el.innerHTML = `<div class="empty"><div class="big">📋</div><p>${filter ? 'Sin partidas de este juego.' : 'Sin partidas todavía.'}</p></div>`; return; }
   el.className = '';
-  const sorted = [...DB.matches].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const sorted = [...all].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   el.innerHTML = sorted.map(m => {
     const g = DB.games.find(x => x.id === m.game_id);
     const max = Math.max(...m.players.map(p => p.score));
@@ -895,7 +943,7 @@ async function delMatch(id) {
     await dbDeleteMatch(id);
     DB.matches = DB.matches.filter(x => x.id !== id);
     renderMatches(); renderRanking(); renderGames();
-  } catch(e) { alert('No se pudo borrar'); }
+  } catch(e) { toast('No se pudo borrar', 'err'); }
 }
 
 /* RANKING */
