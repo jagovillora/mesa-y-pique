@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesa & Pique — Biblioteca y Rankings</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&display=swap');
+
+  :root{
+    --bg:#16110d;
+    --bg2:#1f1812;
+    --panel:#241c15;
+    --panel2:#2c2218;
+    --line:#3a2d20;
+    --ink:#f3e9da;
+    --ink-soft:#bba88f;
+    --accent:#e8743b;
+    --accent2:#f0a94c;
+    --green:#7fae5a;
+    --gold:#e8c14a;
+    --silver:#c9c3b5;
+    --bronze:#c08552;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Bricolage Grotesque',sans-serif;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(232,116,59,.13), transparent 60%),
+      radial-gradient(900px 500px at 0% 100%, rgba(127,174,90,.08), transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .grain{position:fixed;inset:0;pointer-events:none;opacity:.035;z-index:1;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");}
+  header{
+    position:relative;z-index:2;
+    padding:38px 24px 22px;
+    text-align:center;
+    border-bottom:1px solid var(--line);
+  }
+  .logo{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:clamp(2.1rem,6vw,3.4rem);
+    letter-spacing:-.02em;
+    line-height:1;
+  }
+  .logo .amp{color:var(--accent);font-style:italic}
+  .tag{color:var(--ink-soft);margin-top:8px;font-size:.95rem;letter-spacing:.04em}
+
+  nav{
+    position:relative;z-index:2;
+    display:flex;gap:6px;justify-content:center;
+    padding:18px 16px 0;flex-wrap:wrap;
+  }
+  .tab{
+    background:transparent;border:1px solid var(--line);
+    color:var(--ink-soft);
+    padding:11px 22px;border-radius:999px;
+    font-family:inherit;font-size:.92rem;font-weight:600;
+    cursor:pointer;transition:.2s;
+  }
+  .tab:hover{color:var(--ink);border-color:var(--accent)}
+  .tab.active{background:var(--accent);color:#1a0f08;border-color:var(--accent)}
+
+  main{position:relative;z-index:2;max-width:1080px;margin:0 auto;padding:30px 20px 80px}
+  .view{display:none;animation:fade .4s ease}
+  .view.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px}
+  .section-head h2{font-family:'Fraunces',serif;font-weight:600;font-size:1.7rem;letter-spacing:-.01em}
+  .btn{
+    background:var(--accent);color:#1a0f08;border:none;
+    padding:11px 20px;border-radius:10px;
+    font-family:inherit;font-weight:700;font-size:.9rem;cursor:pointer;transition:.18s;
+  }
+  .btn:hover{background:var(--accent2);transform:translateY(-1px)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink-soft)}
+  .btn.ghost:hover{color:var(--ink);border-color:var(--accent)}
+  .btn.sm{padding:7px 13px;font-size:.8rem}
+
+  /* Game grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}
+  .card{
+    background:linear-gradient(160deg,var(--panel),var(--bg2));
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;cursor:pointer;transition:.22s;position:relative;overflow:hidden;
+  }
+  .card::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,transparent,rgba(232,116,59,.06));opacity:0;transition:.22s}
+  .card:hover{transform:translateY(-3px);border-color:var(--accent)}
+  .card:hover::before{opacity:1}
+  .card h3{font-family:'Fraunces',serif;font-size:1.25rem;font-weight:600;margin-bottom:6px;position:relative}
+  .card .meta{color:var(--ink-soft);font-size:.82rem;position:relative;display:flex;gap:14px;flex-wrap:wrap}
+  .card .meta b{color:var(--accent2);font-weight:700}
+  .empty{text-align:center;padding:70px 20px;color:var(--ink-soft)}
+  .empty .big{font-size:2.4rem;margin-bottom:10px;opacity:.5}
+
+  /* Detail */
+  .detail-card{background:linear-gradient(160deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:var(--radius);padding:30px}
+  .detail-card h2{font-family:'Fraunces',serif;font-size:2rem;font-weight:600;margin-bottom:4px}
+  .pill-row{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 24px}
+  .pill{background:var(--panel2);border:1px solid var(--line);color:var(--accent2);padding:6px 14px;border-radius:999px;font-size:.8rem;font-weight:600}
+  .block{margin-bottom:22px}
+  .block h4{font-size:.78rem;text-transform:uppercase;letter-spacing:.14em;color:var(--accent);margin-bottom:8px}
+  .block p{color:var(--ink-soft);line-height:1.65;white-space:pre-wrap;font-size:.95rem}
+
+  /* Ranking */
+  .podium{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:16px;margin:8px 0 34px;align-items:end}
+  .pod{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:20px 12px;text-align:center;position:relative;overflow:hidden;animation:rise .5s cubic-bezier(.2,.8,.2,1) backwards}
+  .pod:nth-child(1){animation-delay:.05s}.pod:nth-child(2){animation-delay:0s}.pod:nth-child(3){animation-delay:.1s}
+  @keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+  .pod::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(255,255,255,.06),transparent 70%);pointer-events:none}
+  .pod .rank{font-family:'Fraunces',serif;font-size:2rem;font-weight:600}
+  .pod .nm{font-weight:700;margin:8px 0 3px;font-size:1.05rem}
+  .pod .pts{color:var(--ink-soft);font-size:.82rem}
+  .pod.p1{border-color:var(--gold);box-shadow:0 0 30px rgba(232,193,74,.13);transform:translateY(-14px)}
+  .pod.p1 .rank{color:var(--gold)}
+  .pod.p1::before{content:"";position:absolute;top:-40%;left:-30%;width:160%;height:80%;background:radial-gradient(ellipse,rgba(232,193,74,.16),transparent 65%)}
+  .pod.p2{border-color:var(--silver)}.pod.p2 .rank{color:var(--silver)}
+  .pod.p3{border-color:var(--bronze)}.pod.p3 .rank{color:var(--bronze)}
+
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{padding:13px 16px;text-align:left;font-size:.9rem}
+  th{background:var(--panel2);color:var(--accent);font-size:.74rem;text-transform:uppercase;letter-spacing:.1em}
+  tr{border-top:1px solid var(--line)}
+  td b{color:var(--accent2)}
+  .pos{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-soft);width:40px}
+  table tr{transition:background .15s}
+  table tbody tr:hover{background:var(--panel2)}
+  .crown-row td{color:var(--gold)}
+
+  .match{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:10px}
+  .match .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px}
+  .match .gm{font-family:'Fraunces',serif;font-weight:600;font-size:1.05rem}
+  .match .dt{color:var(--ink-soft);font-size:.78rem}
+  .match .scores{display:flex;flex-wrap:wrap;gap:8px}
+  .sc{background:var(--panel2);border:1px solid var(--line);padding:5px 11px;border-radius:8px;font-size:.83rem}
+  .sc.win{border-color:var(--gold);color:var(--gold);font-weight:700}
+
+  /* Modal */
+  .overlay{position:fixed;inset:0;background:rgba(8,5,3,.78);backdrop-filter:blur(4px);z-index:50;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+  .overlay.show{display:flex}
+  .modal{background:linear-gradient(160deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:28px;width:100%;max-width:560px;animation:pop .25s ease}
+  @keyframes pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+  .modal h3{font-family:'Fraunces',serif;font-size:1.4rem;font-weight:600;margin-bottom:18px}
+  label{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin:14px 0 6px}
+  input,textarea,select{
+    width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);
+    padding:11px 13px;border-radius:9px;font-family:inherit;font-size:.92rem;resize:vertical;
+  }
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
+  .modal-actions{display:flex;gap:10px;margin-top:24px}
+  .modal-actions .btn{flex:1}
+  .pl-row{display:flex;gap:8px;margin-bottom:8px}
+  .pl-row input:first-child{flex:2}.pl-row input:last-child{flex:1}
+  .del{background:transparent;border:none;color:var(--ink-soft);cursor:pointer;font-size:.8rem;text-decoration:underline}
+  .del:hover{color:var(--accent)}
+  .loading{text-align:center;padding:40px;color:var(--ink-soft)}
+
+  /* Score grid */
+  .sgrid-wrap{overflow-x:auto;margin-top:6px;border:1px solid var(--line);border-radius:10px}
+  table.sgrid{width:100%;border-collapse:collapse;min-width:420px;background:none;border:none;border-radius:0}
+  table.sgrid th,table.sgrid td{padding:8px 9px;font-size:.84rem;border:none}
+  table.sgrid thead th{background:var(--panel2);color:var(--accent);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0}
+  table.sgrid thead th:first-child{text-align:left}
+  table.sgrid tbody tr{border-top:1px solid var(--line)}
+  table.sgrid td input{padding:7px 8px;border-radius:7px;text-align:center;font-size:.85rem}
+  table.sgrid td.pname input{text-align:left}
+  table.sgrid td.total{font-family:'Fraunces',serif;font-weight:600;color:var(--accent2);text-align:center;font-size:1.05rem;white-space:nowrap}
+  table.sgrid tfoot td{font-size:.74rem;color:var(--ink-soft);padding-top:4px}
+  .cat-cell{min-width:62px}
+  .breakdown{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .bd{background:var(--bg2);border:1px solid var(--line);padding:3px 8px;border-radius:6px;font-size:.74rem;color:var(--ink-soft)}
+  .bd b{color:var(--accent2)}
+
+  /* Players */
+  .add-player-bar{display:flex;gap:10px;margin-bottom:24px;max-width:440px}
+  .add-player-bar input{flex:1}
+  .players-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  .pchip{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(160deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:11px;padding:14px 16px}
+  .pchip .pn{font-weight:700}
+  .pchip .px{background:transparent;border:none;color:var(--ink-soft);cursor:pointer;font-size:.95rem;padding:2px 6px;border-radius:6px}
+  .pchip .px:hover{color:var(--accent)}
+  .pchip .pstat{font-size:.74rem;color:var(--ink-soft);margin-top:2px}
+  .filter-bar{margin-bottom:20px}
+  .filter-bar select{max-width:280px}
+  .note{font-size:.78rem;color:var(--ink-soft);margin-top:6px;line-height:1.5}
+
+  /* Rank controls */
+  .rank-controls{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+  .mode-switch{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px;gap:4px}
+  .ms-btn{background:transparent;border:none;color:var(--ink-soft);padding:9px 18px;border-radius:999px;font-family:inherit;font-weight:700;font-size:.84rem;cursor:pointer;transition:.2s}
+  .ms-btn:hover{color:var(--ink)}
+  .ms-btn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a0f08;box-shadow:0 4px 14px rgba(232,116,59,.3)}
+  .rank-controls select{max-width:260px;border-radius:999px}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<header>
+  <div class="logo">Mesa <span class="amp">&amp;</span> Pique</div>
+  <div class="tag">Tu biblioteca de juegos de mesa · Rankings · El pique eterno</div>
+</header>
+
+<nav>
+  <button class="tab active" data-view="games">🎲 Biblioteca</button>
+  <button class="tab" data-view="ranking">🏆 Ranking global</button>
+  <button class="tab" data-view="matches">📋 Partidas</button>
+  <button class="tab" data-view="players">👥 Jugadores</button>
+</nav>
+
+<main>
+  <!-- BIBLIOTECA -->
+  <section class="view active" id="view-games">
+    <div class="section-head">
+      <h2>Mis juegos</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost" onclick="openPdfModal()">📄 Desde PDF</button>
+        <button class="btn" onclick="openGameModal()">+ Añadir juego</button>
+      </div>
+    </div>
+    <div class="filter-bar" style="margin-bottom:16px">
+      <input id="games-search" placeholder="Buscar juego…" oninput="renderGames()" style="max-width:340px">
+    </div>
+    <div id="games-list" class="loading">Cargando…</div>
+  </section>
+
+  <!-- DETALLE JUEGO -->
+  <section class="view" id="view-detail"></section>
+
+  <!-- RANKING -->
+  <section class="view" id="view-ranking">
+    <div class="section-head">
+      <h2>Ranking global</h2>
+    </div>
+    <div class="rank-controls">
+      <div class="mode-switch">
+        <button class="ms-btn active" data-mode="points" onclick="setMode('points')">⚖️ Por puntos de liga</button>
+        <button class="ms-btn" data-mode="wins" onclick="setMode('wins')">🏆 Por victorias</button>
+      </div>
+      <select id="rank-filter" onchange="renderRanking()"><option value="">🌍 Todos los juegos (global)</option></select>
+    </div>
+    <div class="note" id="mode-note">Sistema de liga: victoria = 3 pts · 2º puesto = 1 pt. Suma de todas las partidas.</div>
+    <div id="ranking-body" class="loading">Cargando…</div>
+  </section>
+
+  <!-- PARTIDAS -->
+  <section class="view" id="view-matches">
+    <div class="section-head">
+      <h2>Historial de partidas</h2>
+      <button class="btn" onclick="openMatchModal()">+ Registrar partida</button>
+    </div>
+    <div id="matches-list" class="loading">Cargando…</div>
+  </section>
+
+  <!-- JUGADORES -->
+  <section class="view" id="view-players">
+    <div class="section-head">
+      <h2>Jugadores</h2>
+    </div>
+    <div class="note" style="margin-bottom:16px">Registra aquí los nombres oficiales. Así se evitan duplicados (Álex / alex / Alex) y el ranking cuenta bien.</div>
+    <div class="add-player-bar">
+      <input id="new-player" placeholder="Nombre del jugador" onkeydown="if(event.key==='Enter')addPlayer()">
+      <button class="btn" onclick="addPlayer()">+ Añadir</button>
+    </div>
+    <div id="players-list" class="loading">Cargando…</div>
+  </section>
+</main>
+
+<!-- MODAL JUEGO -->
+<div class="overlay" id="game-overlay">
+  <div class="modal">
+    <h3 id="game-modal-title">Añadir juego</h3>
+    <input type="hidden" id="g-id">
+    <label>Nombre del juego *</label>
+    <input id="g-name" placeholder="Terraforming Mars">
+    <label>Jugadores · Duración</label>
+    <input id="g-meta" placeholder="2-5 jug · 90-120 min">
+    <label>Instrucciones / reglas resumidas</label>
+    <textarea id="g-rules" rows="4" placeholder="Resumen de cómo se juega, fases, turno…"></textarea>
+    <label>Puesta en mesa (setup)</label>
+    <textarea id="g-setup" rows="4" placeholder="Cómo se monta: tablero, mazos, fichas iniciales…"></textarea>
+    <label>Datos para montarlo / notas</label>
+    <textarea id="g-notes" rows="3" placeholder="Variantes, recordatorios, casa-rules…"></textarea>
+    <label>Categorías de puntuación <span class="note">(separadas por comas — se usarán como cuadrícula al registrar partidas)</span></label>
+    <input id="g-cats" placeholder="TR, Recompensas, Hitos, Tablero, Cartas">
+    <div class="note">Déjalo vacío para puntuar con un solo total.</div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('game-overlay')">Cancelar</button>
+      <button class="btn" id="game-save-btn" onclick="saveGame()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pdf-overlay">
+  <div class="modal">
+    <h3>📄 Añadir juego desde PDF</h3>
+    <div class="note" style="margin-bottom:10px">Sube el reglamento (PDF). La IA lo lee entero y crea una ficha detallada en español, aunque el PDF esté en otro idioma. Usa el modelo de máxima calidad: tarda un poco.</div>
+    <label>Reglamento en PDF</label>
+    <input type="file" id="pdf-file" accept="application/pdf">
+    <div id="pdf-status" class="note" style="margin:14px 0;min-height:20px"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="pdf-cancel" onclick="closeModal('pdf-overlay')">Cancelar</button>
+      <button class="btn" id="pdf-go" onclick="importFromPdf()">Leer y guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PARTIDA -->
+<div class="overlay" id="match-overlay">
+  <div class="modal">
+    <h3>Registrar partida</h3>
+    <label>Juego *</label>
+    <select id="m-game" onchange="buildScoreGrid()"></select>
+    <label>Fecha</label>
+    <input type="date" id="m-date">
+    <label>Puntuación * <span class="note" id="m-grid-note"></span></label>
+    <div id="m-grid"></div>
+    <button class="btn ghost sm" onclick="addPlayerRow()" style="margin-top:10px">+ Añadir jugador</button>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal('match-overlay')">Cancelar</button>
+      <button class="btn" id="match-save-btn" onclick="saveMatch()">Guardar partida</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let db = null; // Supabase client
+const DB = { games: [], matches: [], players: [] };
+
+async function initSupabase() {
+  const cfg = await fetch('/api/config').then(r => r.json());
+  db = supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey);
+}
+
+async function load() {
+  await initSupabase();
+
+  const [gamesRes, matchesRes, playersRes, settingsRes] = await Promise.allSettled([
+    db.from('games').select('*'),
+    db.from('matches').select('*'),
+    db.from('players').select('name'),
+    db.from('settings').select('value').eq('key', 'rankmode').single()
+  ]);
+
+  DB.games   = gamesRes.status   === 'fulfilled' ? (gamesRes.value.data   || []) : [];
+  DB.matches = matchesRes.status === 'fulfilled' ? (matchesRes.value.data || []) : [];
+  DB.players = playersRes.status === 'fulfilled' ? (playersRes.value.data || []).map(r => r.name) : [];
+
+  const sv = settingsRes.status === 'fulfilled' ? settingsRes.value.data : null;
+  if (sv && (sv.value === 'points' || sv.value === 'wins')) RANK_MODE = sv.value;
+
+  try { await seedIfEmpty(); } catch(e) { console.warn('seed', e); }
+
+  document.querySelectorAll('.ms-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === RANK_MODE));
+  document.getElementById('mode-note').textContent = RANK_MODE === 'points'
+    ? 'Sistema de liga: victoria = 3 pts · 2º puesto = 1 pt. Suma de todas las partidas.'
+    : 'Modo victorias: solo cuenta el nº de partidas ganadas. El llorica que se prepare. 😎';
+
+  renderGames(); renderRanking(); renderMatches(); renderPlayers(); refreshGameSelects();
+}
+
+/* Persistencia individual en Supabase */
+async function dbAddGame(game)    { const { error } = await db.from('games').insert(game); if(error) throw error; }
+async function dbUpdateGame(game) { const { error } = await db.from('games').update(game).eq('id', game.id); if(error) throw error; }
+async function dbDeleteGame(id)   { const { error } = await db.from('games').delete().eq('id', id); if(error) throw error; }
+async function dbAddMatch(match)  { const { error } = await db.from('matches').insert(match); if(error) throw error; }
+async function dbDeleteMatch(id)  { const { error } = await db.from('matches').delete().eq('id', id); if(error) throw error; }
+async function dbAddPlayer(name)  { const { error } = await db.from('players').insert({ name }); if(error) throw error; }
+async function dbDeletePlayer(n)  { const { error } = await db.from('players').delete().eq('name', n); if(error) throw error; }
+async function dbSaveRankMode(m)  { await db.from('settings').upsert({ key: 'rankmode', value: m }); }
+
+function renderPlayers() {
+  const el = document.getElementById('players-list');
+  if (!DB.players.length) { el.className = ''; el.innerHTML = `<div class="empty"><div class="big">👥</div><p>Sin jugadores. Añade los nombres del grupo.</p></div>`; return; }
+  el.className = 'players-grid';
+  el.innerHTML = [...DB.players].sort((a, b) => a.localeCompare(b)).map(n => {
+    const played = DB.matches.filter(m => m.players.some(p => p.name === n)).length;
+    return `<div class="pchip"><div><div class="pn">${esc(n)}</div><div class="pstat">${played} partidas</div></div><button class="px" onclick="delPlayer('${esc(n).replace(/'/g, "\\'")}')" title="Eliminar">✕</button></div>`;
+  }).join('');
+}
+async function addPlayer() {
+  const inp = document.getElementById('new-player');
+  const name = inp.value.trim(); if (!name) return;
+  if (DB.players.some(p => p.toLowerCase() === name.toLowerCase())) { alert('Ese jugador ya existe'); return; }
+  try {
+    await dbAddPlayer(name);
+    DB.players.push(name); inp.value = '';
+    renderPlayers();
+  } catch(e) { alert('No se pudo guardar: ' + e.message); }
+}
+async function delPlayer(name) {
+  if (!confirm(`¿Eliminar a "${name}" de la lista? (no borra sus partidas ya registradas)`)) return;
+  try {
+    await dbDeletePlayer(name);
+    DB.players = DB.players.filter(p => p !== name);
+    renderPlayers();
+  } catch(e) { alert('No se pudo eliminar'); }
+}
+
+const uid = () => crypto.randomUUID();
+
+async function seedIfEmpty() {
+  if (DB.games.length || DB.matches.length) return;
+
+  const tmId = uid();
+  const tm = {
+    id: tmId,
+    name: 'Terraforming Mars',
+    meta: '1-5 jug · 90-120 min · gestión de motor',
+    rules: `Controlas una corporación que compra y juega cartas de proyecto para terraformar Marte. Ganas con más Puntos de Victoria (VP).
+
+El TR (valor de terraformación) sube cada vez que aumentas un parámetro global (temperatura, oxígeno u océano). El TR son tus ingresos básicos cada generación Y puntos al final.
+
+Cada GENERACIÓN tiene 4 fases:
+1) Orden de jugador (gira el 1er jugador; se omite en la gen 1).
+2) Investigación: cada uno roba 4 cartas, compra las que quiera a 3 M€ (se omite en la gen 1).
+3) Acción: por turnos, 1 o 2 acciones cada uno hasta que todos pasan. Acciones: jugar carta, proyecto estándar, reclamar hito, financiar recompensa, usar acción de carta azul, 8 plantas→vegetación, 8 calor→+1 temperatura.
+4) Producción: energía→calor; cobras M€ (TR + prod. M€); recoges recursos.
+
+FIN: cuando los 3 parámetros llegan a su objetivo (oxígeno 14%, temperatura +8°C, 9 océanos), se acaba esa generación.`,
+    setup: `1) Tablero al centro. 9 losetas de océano en su casilla. Marcadores: temperatura -30°C, oxígeno 0%, generación en "1".
+2) Cubos de recurso y losetas al alcance de todos.
+3) Mazo de proyectos mezclado (en partida normal, SIN cartas de Era Corporativa).
+4) Cada jugador: color + tablero. Producción inicial 1 en cada recurso (partida estándar). Ficha en el "20" de la tabla de TR.
+5) Modo principiante: corporación de Principiante, 42 M€, robar 10 cartas (gratis). Modo normal: 2 cartas de corporación + 10 de proyecto; se paga 3 M€ por carta que se conserve.
+6) La gen 1 empieza directa en la fase de Acción.`,
+    notes: `Estrategia inicial: prioriza motor de M€, luego el recurso que tus cartas necesiten, y a partir de la gen 3-4 convierte el motor en TR y losetas.
+
+Recordatorios:
+· Acero paga cartas de edificio (2 M€/cubo). Titanio paga espaciales (3 M€/cubo).
+· Los requisitos solo se comprueban AL jugar la carta, no después.
+· Cartas con requisito "máx X°C" caducan si calientas de más — jugarlas pronto.
+· Vegetación junto a TUS ciudades = 1 VP extra por ciudad al final.
+· Solo se reclaman 3 de los 5 hitos (8 M€, 5 VP cada uno). ¡Corre a por ellos!
+· Niveles bonificados del tablero: solo los recibe quien provoca llegar a ese nivel, no todos.`,
+    cats: ['TR', 'Recompensas', 'Hitos', 'Tablero', 'Cartas']
+  };
+
+  const wsId = uid();
+  const ws = {
+    id: wsId,
+    name: 'Wingspan',
+    meta: '1-5 jug · 40-70 min · motor y colección de aves',
+    rules: `Sois aficionados a las aves que intentáis atraer a las más interesantes a vuestros aviarios. Gana quien más puntos sume con aves, cartas de bonificación, objetivos de final de ronda, huevos, alimento acumulado y aves solapadas.
+
+Se juega en 4 RONDAS. Cada ronda, por turnos en sentido horario, hasta que todos gastan sus cubos de acción. En tu turno haces 1 de 4 acciones (columna izquierda del tablero):
+1) Juega un ave de tu mano (paga alimento + huevos si la columna lo pide; activa solo el poder «AL JUGARLA»).
+2) Obtén alimento (dados del comedero) y activa poderes marrones de aves de bosque.
+3) Pon huevos y activa poderes marrones de aves de pradera.
+4) Roba cartas de ave y activa poderes marrones de aves de humedal.
+
+Cada acción 2/3/4 sigue 3 pasos: colocas cubo en el espacio libre más a la izquierda de su fila y obtienes su beneficio; mueves el cubo de derecha a izquierda activando aves con poder marrón; al llegar al extremo izquierdo termina el turno.
+
+Cada ronda se usa 1 cubo para marcar el objetivo de final de ronda, así que hay menos turnos: ronda 1 → 8 turnos, ronda 2 → 7, ronda 3 → 6, ronda 4 → 5.
+
+Fin: tras la ronda 4. Gana más puntos; empate → más alimento sin usar.`,
+    setup: `Componentes comunes:
+1) Baraja las cartas de ave; mazo junto a la bandeja, llénala con 3 cartas bocarriba.
+2) Suministro: fichas de alimento y huevos al alcance de todos.
+3) Comedero (torre de dados): lanza los 5 dados.
+4) Tablero de objetivos: elige cara verde (mayorías, modo estándar) o azul (1 punto por elemento, recomendado con novatos).
+5) Baraja las losetas de objetivo y coloca 1 (cara al azar) en cada espacio del tablero de objetivos.
+6) Baraja las cartas de bonificación, forma mazo.
+
+Cada jugador: 1 tablero, 8 cubos de su color, 2 cartas de bonificación al azar, 5 cartas de ave al azar, 5 fichas de alimento (1 de cada tipo).
+· Quédate hasta 5 cartas de ave; por cada una que guardes, descarta 1 ficha de alimento.
+· Quédate 1 carta de bonificación (descarta la otra).
+· Jugador inicial al azar.`,
+    notes: `TIPOS DE PODER DE AVE:
+· AL JUGARLA (incoloro): solo al poner el ave.
+· AL ACTIVARLA (marrón): al usar ese hábitat, de derecha a izquierda.
+· UNA VEZ ENTRE TURNOS (rosa): en el turno de un rival, una vez por vuelta.
+
+CONCEPTOS: Almacenar = poner alimento sobre un ave (1 PV final, no se gasta). Solapar = carta bocabajo bajo un ave de bandada (1 PV). Envergadura: para comparar en algunos poderes.
+
+CON EXPANSIÓN OCEANÍA: baraja sus cartas con el resto; sustituye dados y tableros por los nuevos; añade fichas de néctar. El NÉCTAR es comodín al pagar aves/mejoras pero NO cuando un poder pide un alimento concreto; el néctar sin gastar se descarta al final de cada ronda. Fin de partida: en cada hábitat, quien más néctar gastado tenga gana 5 PV y el segundo 2.
+
+CONSEJO: al elegir aves al principio piensa en cuáles te dan cartas o alimento pronto; los poderes marrones suelen ser muy útiles al inicio.`,
+    cats: ['Aves', 'Cartas bonif.', 'Objetivos', 'Huevos', 'Alimento', 'Solapadas', 'Néctar']
+  };
+
+  const wyId = uid();
+  const wy = {
+    id: wyId,
+    name: 'Wyrmspan',
+    meta: '1-5 jug · 90 min · construye un santuario de dragones',
+    rules: `Eres un dracólogo aficionado: excavas un laberinto oculto en tus tierras y atraes dragones para que aniden en tus cuevas. Gana quien más puntos de victoria (PV) sume.
+
+Tu santuario tiene 3 cuevas (Caverna Carmesí, Gruta Dorada, Abismo Amatista), cada una con 4 espacios. Empiezas con el primer espacio de cada cueva ya excavado.
+
+Se juega en 4 RONDAS. Por turnos en sentido horario; en tu turno haces 1 de estas acciones:
+· EXCAVAR: juega una carta de cueva en el espacio vacío más a la izquierda de una cueva (paga 1 moneda + huevos según la columna: +1 huevo en la 3.ª, +2 en la 4.ª).
+· ATRAER un dragón: juega un dragón de tu mano en el espacio excavado más a la izquierda de una cueva (paga 1 moneda + el coste impreso). Activa su poder «AL JUGARLO» si lo tiene.
+· EXPLORAR una cueva: mueve tu aventurero de IZQUIERDA A DERECHA por esa cueva, activando los poderes «SI SE ACTIVA» que pase. Coste: 1.ª vez en esa cueva por ronda = 1 moneda; 2.ª = 1 moneda + 1 huevo; 3.ª = 1 moneda + 2 huevos.
+
+Al pasar puedes conservar monedas, recursos, cartas, dragones y huevos para la siguiente ronda. Cuando todos pasan, acaba la ronda. Tras la ronda 4 termina la partida y se puntúa.`,
+    setup: `En el centro de la mesa:
+1) Tablero del Gremio del Dragón: 1 loseta de gremio al azar (cara según nº de jugadores).
+2) Tablero expositor: 3 dragones bocarriba + mazo; 3 cartas de cueva bocarriba + su mazo.
+3) Tablero de rondas: marcador en ronda 1. Baraja las losetas de objetivo y pon 4 al azar (cara al azar).
+4) Reserva pública: monedas, huevos y fichas (oro, cristal, carne, leche) al alcance de todos.
+
+Cada jugador: 1 tablero y piezas de su color (1 aventurero, 8 marcadores, 1 ficha de gremio), 6 monedas, 1 huevo, 3 recursos a elegir, y roba 3 dragones + 3 cartas de cueva.
+· Quédate 4 cartas en total (libre combinación de dragones y cuevas); descarta las otras 2.
+· Pon tu huevo inicial en uno de los 2 iconos de nido de tu tablero.
+· Aventurero en el Campamento Base; ficha de gremio en START del Gremio.
+· Jugador inicial al azar.`,
+    notes: `TIPOS DE PODER:
+· AL JUGARLO: al poner el dragón, beneficio una vez.
+· SI SE ACTIVA: cuando tu aventurero pasa por encima al explorar.
+· UNA VEZ POR RONDA: al final de cada ronda.
+· FIN DE PARTIDA: da PV al final si cumples condiciones.
+
+CONCEPTOS:
+· CACHEAR un recurso = ponerlo sobre un dragón; vale 1 PV al final.
+· SOLAPAR una carta = ponerla bocabajo bajo un dragón; vale 1 PV. Las solapadas NO cuentan como dragones para objetivos.
+· PONER un huevo = en un nido vacío (de dragón o de tu tablero); vale 1 PV.
+· Límite a fin de turno: 9 monedas, 9 cartas, 9 recursos.
+
+PUNTUACIÓN FINAL: marcadores en el Gremio · PV impresos en dragones visibles · poderes "fin de partida" · 1 PV por huevo/recurso cacheado/carta solapada · objetivos públicos · 1 PV por moneda sobrante · 1 PV por cada 4 objetos sobrantes.
+
+SI YA CONOCES WINGSPAN: las acciones se pagan con monedas no con cubos; exploras de IZQUIERDA A DERECHA; debes excavar antes de atraer un dragón.`,
+    cats: ['Gremio', 'PV dragones', 'Fin partida', 'Huevos', 'Cacheados', 'Solapadas', 'Objetivos', 'Sobrantes']
+  };
+
+  const match1 = {
+    id: uid(),
+    game_id: tmId,
+    date: new Date().toISOString().slice(0, 10),
+    players: [
+      { name: 'Álex',          score: 69, breakdown: { TR: 38, Recompensas: 5, Hitos: 5, Tablero: 11, Cartas: 10 } },
+      { name: 'Ana',           score: 67, breakdown: { TR: 40, Recompensas: 7, Hitos: 0, Tablero: 14, Cartas: 6  } },
+      { name: 'Alicia',        score: 65, breakdown: { TR: 36, Recompensas: 0, Hitos: 5, Tablero: 18, Cartas: 6  } },
+      { name: 'Antonio Jesús', score: 62, breakdown: { TR: 34, Recompensas: 2, Hitos: 5, Tablero: 15, Cartas: 6  } }
+    ]
+  };
+
+  const seedPlayers = ['Álex', 'Ana', 'Alicia', 'Antonio Jesús'];
+  await Promise.all([
+    dbAddGame(tm), dbAddGame(ws), dbAddGame(wy), dbAddMatch(match1),
+    ...seedPlayers.map(n => dbAddPlayer(n))
+  ]);
+  DB.games.push(tm, ws, wy);
+  DB.matches.push(match1);
+  DB.players.push(...seedPlayers);
+}
+
+/* NAV */
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.getElementById('view-' + t.dataset.view).classList.add('active');
+});
+function goView(v) {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.view === v));
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  document.getElementById('view-' + v).classList.add('active');
+}
+
+/* GAMES */
+function renderGames() {
+  const el = document.getElementById('games-list');
+  const q = (document.getElementById('games-search')?.value || '').toLowerCase();
+  const games = q ? DB.games.filter(g => g.name.toLowerCase().includes(q)) : DB.games;
+  if (!games.length) {
+    el.className = '';
+    el.innerHTML = `<div class="empty"><div class="big">🎲</div><p>${q ? 'Sin resultados para "' + esc(q) + '".' : 'Aún no hay juegos. ¡Añade el primero!'}</p></div>`;
+    return;
+  }
+  el.className = 'grid';
+  el.innerHTML = games.map(g => {
+    const plays = DB.matches.filter(m => m.game_id === g.id).length;
+    return `<div class="card" onclick="showDetail('${g.id}')">
+      <h3>${esc(g.name)}</h3>
+      <div class="meta">${g.meta ? `<span>${esc(g.meta)}</span>` : ''}<span><b>${plays}</b> partidas</span></div>
+    </div>`;
+  }).join('');
+}
+function showDetail(id) {
+  const g = DB.games.find(x => x.id === id); if (!g) return;
+  const plays = [...DB.matches.filter(m => m.game_id === id)].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const matchHistoryHtml = plays.length ? `
+    <div class="block">
+      <h4>Últimas partidas (${plays.length} total)</h4>
+      ${plays.slice(0, 5).map(m => {
+        const max = Math.max(...m.players.map(p => p.score));
+        const ps = [...m.players].sort((a, b) => b.score - a.score);
+        return `<div class="match" style="margin-bottom:8px">
+          <div class="top"><span class="dt">${fmtDate(m.date)}</span></div>
+          <div class="scores">${ps.map(p => `<span class="sc${p.score === max ? ' win' : ''}">${p.score === max ? '👑 ' : ''}${esc(p.name)} · ${p.score}</span>`).join('')}</div>
+        </div>`;
+      }).join('')}
+      ${plays.length > 5 ? `<p class="note" style="margin-top:6px">…y ${plays.length - 5} más en el historial.</p>` : ''}
+    </div>` : '';
+  const v = document.getElementById('view-detail');
+  v.innerHTML = `
+    <button class="btn ghost sm" onclick="goView('games')">← Volver</button>
+    <div class="detail-card" style="margin-top:16px">
+      <h2>${esc(g.name)}</h2>
+      <div class="pill-row">
+        ${g.meta ? `<span class="pill">${esc(g.meta)}</span>` : ''}
+        <span class="pill">${plays.length} partidas jugadas</span>
+      </div>
+      ${block('Instrucciones / reglas', g.rules)}
+      ${block('Puesta en mesa', g.setup)}
+      ${block('Datos para montarlo', g.notes)}
+      ${(g.cats && g.cats.length) ? `<div class="block"><h4>Categorías de puntuación</h4><div class="breakdown">${g.cats.map(c => `<span class="bd">${esc(c)}</span>`).join('')}</div></div>` : ''}
+      ${matchHistoryHtml}
+      <div style="display:flex;gap:10px;margin-top:24px;flex-wrap:wrap">
+        <button class="btn sm" onclick="openMatchModalForGame('${g.id}')">+ Registrar partida</button>
+        <button class="btn ghost sm" onclick="openGameModal('${g.id}')">Editar</button>
+        <button class="btn ghost sm" onclick="delGame('${g.id}')">Eliminar juego</button>
+      </div>
+    </div>`;
+  goView('detail');
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+}
+const block = (t, c) => c ? `<div class="block"><h4>${t}</h4><p>${esc(c)}</p></div>` : '';
+
+function openGameModal(id) {
+  document.getElementById('game-overlay').classList.add('show');
+  const t = document.getElementById('game-modal-title');
+  const F = k => document.getElementById('g-' + k);
+  if (id) {
+    const g = DB.games.find(x => x.id === id);
+    t.textContent = 'Editar juego';
+    F('id').value = g.id; F('name').value = g.name; F('meta').value = g.meta || '';
+    F('rules').value = g.rules || ''; F('setup').value = g.setup || ''; F('notes').value = g.notes || '';
+    F('cats').value = (g.cats || []).join(', ');
+  } else {
+    t.textContent = 'Añadir juego';
+    ['id', 'name', 'meta', 'rules', 'setup', 'notes', 'cats'].forEach(k => F(k).value = '');
+  }
+}
+async function saveGame() {
+  const F = k => document.getElementById('g-' + k);
+  const name = F('name').value.trim(); if (!name) { alert('Pon un nombre'); return; }
+  const cats = F('cats').value.split(',').map(s => s.trim()).filter(Boolean);
+  const data = { name, meta: F('meta').value.trim(), rules: F('rules').value.trim(), setup: F('setup').value.trim(), notes: F('notes').value.trim(), cats };
+  const gid = F('id').value;
+  const btn = document.getElementById('game-save-btn');
+  btn.disabled = true;
+  try {
+    if (gid) {
+      const g = DB.games.find(x => x.id === gid);
+      Object.assign(g, data);
+      await dbUpdateGame(g);
+    } else {
+      const g = { id: uid(), ...data };
+      DB.games.push(g);
+      await dbAddGame(g);
+    }
+    closeModal('game-overlay'); renderGames(); refreshGameSelects(); renderRanking();
+  } catch(e) { alert('Error al guardar: ' + e.message); }
+  finally { btn.disabled = false; }
+}
+async function delGame(id) {
+  if (!confirm('¿Eliminar el juego? (no borra las partidas registradas)')) return;
+  try {
+    await dbDeleteGame(id);
+    DB.games = DB.games.filter(x => x.id !== id);
+    renderGames(); refreshGameSelects(); goView('games');
+  } catch(e) { alert('No se pudo eliminar'); }
+}
+
+/* IMPORTAR DESDE PDF */
+function openPdfModal() {
+  document.getElementById('pdf-overlay').classList.add('show');
+  document.getElementById('pdf-file').value = '';
+  document.getElementById('pdf-status').textContent = '';
+}
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = () => rej(new Error('No se pudo leer el archivo'));
+    r.readAsDataURL(file);
+  });
+}
+async function importFromPdf() {
+  const inp = document.getElementById('pdf-file');
+  const st = document.getElementById('pdf-status');
+  const goBtn = document.getElementById('pdf-go');
+  const file = inp.files && inp.files[0];
+  if (!file) { st.textContent = '⚠️ Elige un PDF primero.'; return; }
+  if (file.type !== 'application/pdf') { st.textContent = '⚠️ El archivo debe ser un PDF.'; return; }
+
+  goBtn.disabled = true; document.getElementById('pdf-cancel').disabled = true;
+  st.textContent = '📖 Leyendo el reglamento entero y redactando la ficha con el modelo de máxima calidad… (puede tardar bastante, ten paciencia)';
+
+  let b64;
+  try { b64 = await fileToBase64(file); }
+  catch(e) { st.textContent = '⚠️ ' + e.message; goBtn.disabled = false; document.getElementById('pdf-cancel').disabled = false; return; }
+
+  try {
+    const resp = await fetch('/api/import-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pdf: b64 })
+    });
+    const result = await resp.json();
+    if (!resp.ok) throw new Error(result.error || 'Error del servidor');
+
+    const obj = result.game;
+    const cats = Array.isArray(obj.cats) ? obj.cats.map(c => ('' + c).trim()).filter(Boolean) : [];
+    const g = { id: uid(), name: (obj.name || '').toString().trim(), meta: (obj.meta || '').toString().trim(), rules: (obj.rules || '').toString().trim(), setup: (obj.setup || '').toString().trim(), notes: (obj.notes || '').toString().trim(), cats };
+    if (!g.name) throw new Error('No pude identificar el nombre del juego en el PDF.');
+
+    await dbAddGame(g);
+    DB.games.push(g);
+    closeModal('pdf-overlay');
+    renderGames(); refreshGameSelects(); renderRanking();
+    alert('✅ "' + g.name + '" añadido a tu biblioteca. Échale un ojo y edítalo si quieres ajustar algo.');
+  } catch(e) {
+    st.textContent = '⚠️ ' + e.message;
+  } finally {
+    goBtn.disabled = false; document.getElementById('pdf-cancel').disabled = false;
+  }
+}
+
+/* MATCHES */
+function refreshGameSelects() {
+  const opts = DB.games.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
+  document.getElementById('m-game').innerHTML = opts || '<option value="">— Añade un juego primero —</option>';
+  const rf = document.getElementById('rank-filter');
+  rf.innerHTML = '<option value="">🌍 Todos los juegos (global)</option>' + DB.games.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
+}
+function openMatchModal() {
+  if (!DB.games.length) { alert('Primero añade un juego en la Biblioteca'); return; }
+  document.getElementById('match-overlay').classList.add('show');
+  document.getElementById('m-date').value = new Date().toISOString().slice(0, 10);
+  buildScoreGrid();
+}
+function openMatchModalForGame(id) {
+  openMatchModal();
+  const sel = document.getElementById('m-game');
+  sel.value = id;
+  buildScoreGrid();
+}
+function currentMatchGame() { return DB.games.find(x => x.id === document.getElementById('m-game').value); }
+function buildScoreGrid(initialRows) {
+  const g = currentMatchGame();
+  const cats = (g && g.cats && g.cats.length) ? g.cats : null;
+  const note = document.getElementById('m-grid-note');
+  note.textContent = cats ? 'Rellena cada categoría — el total se suma solo.' : '(el de mayor puntuación gana)';
+  const grid = document.getElementById('m-grid');
+  if (cats) {
+    grid.innerHTML = `<div class="sgrid-wrap"><table class="sgrid">
+      <thead><tr><th>Jugador</th>${cats.map(c => `<th class="cat-cell">${esc(c)}</th>`).join('')}<th>Total</th><th></th></tr></thead>
+      <tbody id="sg-body"></tbody></table></div>`;
+  } else {
+    grid.innerHTML = `<div id="sg-simple"></div>`;
+  }
+  const n = initialRows || 2;
+  for (let i = 0; i < n; i++) addPlayerRow();
+}
+function playerSelectHTML() {
+  if (!DB.players.length) return `<input class="pl-name" placeholder="Jugador">`;
+  return `<select class="pl-name"><option value="">— jugador —</option>${[...DB.players].sort((a, b) => a.localeCompare(b)).map(n => `<option>${esc(n)}</option>`).join('')}</select>`;
+}
+function addPlayerRow() {
+  const g = currentMatchGame();
+  const cats = (g && g.cats && g.cats.length) ? g.cats : null;
+  if (cats) {
+    const tb = document.getElementById('sg-body');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="pname">${playerSelectHTML()}</td>` +
+      cats.map(() => `<td><input type="number" class="pl-cat" oninput="recalc()" placeholder="0"></td>`).join('') +
+      `<td class="total">0</td><td><button class="del" onclick="this.closest('tr').remove();recalc()">✕</button></td>`;
+    tb.appendChild(tr);
+  } else {
+    const w = document.getElementById('sg-simple');
+    const d = document.createElement('div'); d.className = 'pl-row';
+    d.innerHTML = `${playerSelectHTML()}<input type="number" placeholder="Puntos" class="pl-score"><button class="del" onclick="this.closest('.pl-row').remove()" style="flex:0 0 auto">✕</button>`;
+    w.appendChild(d);
+  }
+}
+function recalc() {
+  document.querySelectorAll('#sg-body tr').forEach(tr => {
+    let sum = 0; tr.querySelectorAll('.pl-cat').forEach(i => sum += parseFloat(i.value) || 0);
+    tr.querySelector('.total').textContent = sum;
+  });
+}
+async function saveMatch() {
+  const gid = document.getElementById('m-game').value; if (!gid) { alert('Elige un juego'); return; }
+  const g = DB.games.find(x => x.id === gid);
+  const cats = (g && g.cats && g.cats.length) ? g.cats : null;
+  let players = [];
+  if (cats) {
+    [...document.querySelectorAll('#sg-body tr')].forEach(tr => {
+      const name = tr.querySelector('.pl-name').value.trim();
+      const vals = [...tr.querySelectorAll('.pl-cat')].map(i => parseFloat(i.value) || 0);
+      const score = vals.reduce((a, b) => a + b, 0);
+      if (name) players.push({ name, score, breakdown: Object.fromEntries(cats.map((c, i) => [c, vals[i]])) });
+    });
+  } else {
+    [...document.querySelectorAll('#sg-simple .pl-row')].forEach(r => {
+      const name = r.querySelector('.pl-name').value.trim();
+      const score = parseFloat(r.querySelector('.pl-score').value);
+      if (name && !isNaN(score)) players.push({ name, score });
+    });
+  }
+  if (players.length < 2) { alert('Pon al menos 2 jugadores'); return; }
+  const match = { id: uid(), game_id: gid, date: document.getElementById('m-date').value, players };
+  const btn = document.getElementById('match-save-btn');
+  btn.disabled = true;
+  try {
+    await dbAddMatch(match);
+    DB.matches.push(match);
+    closeModal('match-overlay'); renderMatches(); renderRanking(); renderGames(); renderPlayers();
+  } catch(e) { alert('Error al guardar: ' + e.message); }
+  finally { btn.disabled = false; }
+}
+function renderMatches() {
+  const el = document.getElementById('matches-list');
+  if (!DB.matches.length) { el.className = ''; el.innerHTML = `<div class="empty"><div class="big">📋</div><p>Sin partidas todavía.</p></div>`; return; }
+  el.className = '';
+  const sorted = [...DB.matches].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  el.innerHTML = sorted.map(m => {
+    const g = DB.games.find(x => x.id === m.game_id);
+    const max = Math.max(...m.players.map(p => p.score));
+    const ps = [...m.players].sort((a, b) => b.score - a.score);
+    return `<div class="match">
+      <div class="top">
+        <span class="gm">${g ? esc(g.name) : '(juego eliminado)'}</span>
+        <span class="dt">${fmtDate(m.date)} · <span class="del" onclick="delMatch('${m.id}')">borrar</span></span>
+      </div>
+      <div class="scores">${ps.map(p => `<span class="sc${p.score === max ? ' win' : ''}">${p.score === max ? '👑 ' : ''}${esc(p.name)} · ${p.score}</span>`).join('')}</div>
+      ${ps.some(p => p.breakdown) ? `<div class="breakdown">${ps.map(p => p.breakdown ? `<span class="bd"><b>${esc(p.name)}:</b> ${Object.entries(p.breakdown).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')}</span>` : '').join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+async function delMatch(id) {
+  if (!confirm('¿Borrar esta partida?')) return;
+  try {
+    await dbDeleteMatch(id);
+    DB.matches = DB.matches.filter(x => x.id !== id);
+    renderMatches(); renderRanking(); renderGames();
+  } catch(e) { alert('No se pudo borrar'); }
+}
+
+/* RANKING */
+let RANK_MODE = 'points';
+function setMode(m) {
+  RANK_MODE = m;
+  document.querySelectorAll('.ms-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+  document.getElementById('mode-note').textContent = m === 'points'
+    ? 'Sistema de liga: victoria = 3 pts · 2º puesto = 1 pt. Suma de todas las partidas.'
+    : 'Modo victorias: solo cuenta el nº de partidas ganadas. El llorica que se prepare. 😎';
+  dbSaveRankMode(m);
+  renderRanking();
+}
+function renderRanking() {
+  const filter = document.getElementById('rank-filter').value;
+  const body = document.getElementById('ranking-body');
+  const ms = DB.matches.filter(m => !filter || m.game_id === filter);
+  if (!ms.length) { body.className = ''; body.innerHTML = `<div class="empty"><div class="big">🏆</div><p>Sin datos. Registra partidas para ver el ranking.</p></div>`; return; }
+  body.className = '';
+  const tally = {};
+  ms.forEach(m => {
+    const sorted = [...m.players].sort((a, b) => b.score - a.score);
+    const top = sorted[0].score;
+    const second = [...new Set(sorted.map(p => p.score))].sort((a, b) => b - a)[1];
+    m.players.forEach(p => {
+      const t = tally[p.name] || (tally[p.name] = { name: p.name, pts: 0, wins: 0, played: 0, totalScore: 0 });
+      t.played++; t.totalScore += p.score;
+      if (p.score === top) { t.pts += 3; t.wins++; }
+      else if (second !== undefined && p.score === second) { t.pts += 1; }
+    });
+  });
+  const byPoints = (a, b) => b.pts - a.pts || b.wins - a.wins || b.totalScore - a.totalScore;
+  const byWins   = (a, b) => b.wins - a.wins || b.pts - a.pts || b.totalScore - a.totalScore;
+  const arr = Object.values(tally).sort(RANK_MODE === 'points' ? byPoints : byWins);
+  const metric = p => RANK_MODE === 'points' ? `${p.pts} pts · ${p.wins} 🏆` : `${p.wins} 🏆 · ${p.played} jug`;
+  const podium = arr.slice(0, 3);
+  const order = [1, 0, 2];
+  const podHtml = order.filter(i => podium[i]).map(i => {
+    const p = podium[i]; const cls = ['p1','p2','p3'][i]; const medal = ['🥇','🥈','🥉'][i];
+    return `<div class="pod ${cls}"><div class="rank">${medal}</div><div class="nm">${esc(p.name)}</div><div class="pts">${metric(p)}</div></div>`;
+  }).join('');
+  const hi = RANK_MODE === 'points' ? 'Pts' : 'Victorias';
+  body.innerHTML = `
+    ${podium.length >= 1 ? `<div class="podium">${podHtml}</div>` : ''}
+    <table><thead><tr><th>#</th><th>Jugador</th><th>${hi}</th><th>Victorias</th><th>Partidas</th><th>Σ Puntos</th></tr></thead>
+    <tbody>${arr.map((p, i) => `<tr class="${i === 0 ? 'crown-row' : ''}"><td class="pos">${i === 0 ? '👑' : i + 1}</td><td><b>${esc(p.name)}</b></td><td><b>${RANK_MODE === 'points' ? p.pts : p.wins}</b></td><td>${p.wins}</td><td>${p.played}</td><td>${p.totalScore}</td></tr>`).join('')}</tbody></table>`;
+}
+
+/* Utils */
+function closeModal(id)  { document.getElementById(id).classList.remove('show'); }
+function esc(s)          { return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function fmtDate(d)      { if (!d) return ''; const [y, m, da] = d.split('-'); return `${da}/${m}/${y}`; }
+document.querySelectorAll('.overlay').forEach(o => o.onclick = e => { if (e.target === o) o.classList.remove('show'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.overlay.show').forEach(o => o.classList.remove('show')); });
+
+load();
+</script>
+</body>
+</html>

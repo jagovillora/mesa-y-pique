@@ -1,0 +1,68 @@
+const Anthropic = require('@anthropic-ai/sdk');
+
+const PROMPT = `Eres un experto en juegos de mesa que redacta fichas de referencia para un grupo de amigos. Te paso el reglamento completo de un juego en PDF. Tu trabajo es leerlo ENTERO y producir una ficha tan detallada y bien escrita como la haría un humano experto que se ha leído el manual y quiere dejar una chuleta impecable para jugar y para enseñar a otros.
+
+═══ PRINCIPIOS (OBLIGATORIOS) ═══
+1. TODO en ESPAÑOL claro y natural, aunque el reglamento esté en inglés u otro idioma: tradúcelo con criterio, no literalmente. Usa la terminología española habitual del juego si existe.
+2. NIVEL DE DETALLE ALTO. No resumas en exceso: alguien debe poder jugar y arbitrar dudas solo con tu ficha. Incluye costes, límites, números concretos, excepciones y casos especiales relevantes.
+3. Tono práctico de chuleta: frases directas, listas con "·", pasos numerados. Nada de relleno, marketing ni introducciones largas.
+4. Estructura el texto con saltos de línea reales y subtítulos en MAYÚSCULAS cuando ayude.
+5. Si el PDF incluye expansiones, modos alternativos o variantes, INTÉGRALOS en "notes" con su propio subtítulo, traducidos.
+6. Devuelve EXCLUSIVAMENTE un objeto JSON válido: sin texto antes ni después, sin markdown, sin \`\`\`. Escapa correctamente los saltos de línea dentro de las cadenas (\\n).
+
+═══ ESTRUCTURA EXACTA DEL JSON ═══
+{
+  "name": "nombre oficial del juego",
+  "meta": "Nº jugadores · duración · frase corta del tipo de juego",
+  "rules": "Objetivo. Estructura de rondas/turnos. TODAS las acciones posibles explicadas con su coste y efecto. Condición de fin de partida. Cómo se gana.",
+  "setup": "Puesta en mesa paso a paso: componentes comunes en la mesa y, aparte, qué recibe y prepara CADA jugador.",
+  "notes": "Datos útiles: tipos de poderes/cartas, conceptos clave, expansiones traducidas, recordatorios, detalles finos de puntuación y consejos estratégicos breves.",
+  "cats": ["categorías CORTAS de puntuación final","1-3 palabras cada una"]
+}
+
+Para "cats": las categorías REALES en las que se suman puntos al final de la partida, en orden. Nombres cortos (1-3 palabras) porque son columnas de una tabla. Si el juego se puntúa con un único total sin categorías, devuelve "cats": [].
+
+Devuelve solo el JSON.`;
+
+module.exports = async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método no permitido' });
+  }
+
+  const { pdf } = req.body || {};
+  if (!pdf) return res.status(400).json({ error: 'Falta el PDF en base64' });
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-opus-4-7',
+      max_tokens: 8192,
+      system: [{ type: 'text', text: PROMPT, cache_control: { type: 'ephemeral' } }],
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf } },
+          { type: 'text', text: 'Lee el reglamento completo y devuelve el JSON.' }
+        ]
+      }]
+    });
+
+    const txt = response.content
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
+      .trim();
+
+    let clean = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const a = clean.indexOf('{'), z = clean.lastIndexOf('}');
+    if (a >= 0 && z > a) clean = clean.slice(a, z + 1);
+
+    const game = JSON.parse(clean);
+    if (!game.name) throw new Error('No se pudo identificar el nombre del juego en el PDF');
+
+    res.json({ ok: true, game });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+};
