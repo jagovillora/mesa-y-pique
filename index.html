@@ -1097,6 +1097,30 @@ function renderRanking() {
 }
 
 /* SLEEVES */
+async function fetchBGGComponents(name) {
+  try {
+    const p = new DOMParser();
+    let id = null;
+    for (const exact of ['&exact=1', '']) {
+      const xml = await fetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(name)}&type=boardgame${exact}`).then(r => r.text());
+      id = p.parseFromString(xml, 'text/xml').querySelector('item')?.getAttribute('id');
+      if (id) break;
+    }
+    if (!id) return null;
+    for (let i = 0; i < 2; i++) {
+      if (i) await new Promise(r => setTimeout(r, 2500));
+      const xml = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}`).then(r => r.text());
+      if (xml.includes('try again later')) continue;
+      const doc = p.parseFromString(xml, 'text/xml');
+      return {
+        name: doc.querySelector('name[type="primary"]')?.getAttribute('value') || name,
+        description: doc.querySelector('description')?.textContent || ''
+      };
+    }
+    return null;
+  } catch { return null; }
+}
+
 async function searchSleeves() {
   const inp  = document.getElementById('sleeve-input');
   const res  = document.getElementById('sleeves-result');
@@ -1104,14 +1128,18 @@ async function searchSleeves() {
   const name = inp.value.trim();
   if (!name) { toast('Escribe el nombre de un juego', 'err'); return; }
 
-  btn.disabled = true; btn.textContent = 'Consultando…';
-  res.innerHTML = '<div class="loading">Preguntando a la IA…</div>';
+  btn.disabled = true; btn.textContent = 'Buscando en BGG…';
+  res.innerHTML = '<div class="loading">Consultando BoardGameGeek…</div>';
+  const bggData = await fetchBGGComponents(name);
+
+  btn.textContent = 'Calculando…';
+  res.innerHTML = '<div class="loading">Calculando fundas…</div>';
 
   try {
     const r = await fetch('/api/sleeves', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game: name })
+      body: JSON.stringify({ game: name, bggData })
     });
     const data = await r.json();
     if (data.error) throw new Error(data.error);
