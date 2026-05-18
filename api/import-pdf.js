@@ -42,7 +42,10 @@ module.exports = async function handler(req, res) {
   if (!pdf) return res.status(400).json({ error: 'Falta el PDF en base64' });
 
   const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel(
+    { model: 'gemini-1.5-flash' },
+    { apiVersion: 'v1' }
+  );
 
   try {
     const result = await model.generateContent([
