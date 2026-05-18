@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 
 const ADMIN_EMAIL = 'jagovillora@gmail.com';
@@ -28,9 +28,7 @@ Para "cats": las categorías REALES en las que se suman puntos al final de la pa
 Devuelve solo el JSON.`;
 
 module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método no permitido' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) return res.status(401).json({ error: 'No autorizado' });
@@ -43,33 +41,21 @@ module.exports = async function handler(req, res) {
   const { pdf } = req.body || {};
   if (!pdf) return res.status(400).json({ error: 'Falta el PDF en base64' });
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-opus-4-7',
-      max_tokens: 8192,
-      system: [{ type: 'text', text: PROMPT, cache_control: { type: 'ephemeral' } }],
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf } },
-          { type: 'text', text: 'Lee el reglamento completo y devuelve el JSON.' }
-        ]
-      }]
-    });
+    const result = await model.generateContent([
+      { inlineData: { data: pdf, mimeType: 'application/pdf' } },
+      PROMPT
+    ]);
 
-    const txt = response.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n')
-      .trim();
+    let txt = result.response.text().trim();
+    txt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const a = txt.indexOf('{'), z = txt.lastIndexOf('}');
+    if (a >= 0 && z > a) txt = txt.slice(a, z + 1);
 
-    let clean = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const a = clean.indexOf('{'), z = clean.lastIndexOf('}');
-    if (a >= 0 && z > a) clean = clean.slice(a, z + 1);
-
-    const game = JSON.parse(clean);
+    const game = JSON.parse(txt);
     if (!game.name) throw new Error('No se pudo identificar el nombre del juego en el PDF');
 
     res.json({ ok: true, game });

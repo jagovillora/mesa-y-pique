@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const SYSTEM = `Eres un experto en juegos de mesa y fundas para cartas. Dado el nombre de un juego, indica qué fundas se necesitan para enfundar TODAS las cartas de la edición base.
 
@@ -28,27 +28,22 @@ Devuelve SOLO JSON válido sin texto adicional:
 }
 
 Si el juego no existe o no tiene cartas: {"found": false, "game": "nombre"}
-Sé preciso. Si no estás seguro de la cantidad exacta, pon una estimación conservadora e indícalo en notes.`;
+Sé preciso. Si no estás seguro de la cantidad exacta, pon una estimación e indícalo en notes.`;
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   const { game } = req.body || {};
   if (!game?.trim()) return res.status(400).json({ error: 'Falta el nombre del juego' });
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: `Juego: ${game.trim()}` }]
-    });
+  const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', systemInstruction: SYSTEM });
 
-    let txt = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  try {
+    const result = await model.generateContent(`Juego: ${game.trim()}`);
+    let txt = result.response.text().trim();
     txt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
     const a = txt.indexOf('{'), z = txt.lastIndexOf('}');
     if (a >= 0 && z > a) txt = txt.slice(a, z + 1);
-
     res.json(JSON.parse(txt));
   } catch (e) {
     res.status(500).json({ error: e.message });
