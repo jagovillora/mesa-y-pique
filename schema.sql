@@ -15,7 +15,8 @@ create table if not exists matches (
   id      text primary key,
   game_id text not null,
   date    text,
-  players jsonb not null default '[]'
+  players jsonb not null default '[]',
+  photo   text default null
 );
 
 create table if not exists players (
