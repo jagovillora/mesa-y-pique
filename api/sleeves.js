@@ -37,12 +37,12 @@ module.exports = async function handler(req, res) {
 
   const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
   const model = genAI.getGenerativeModel(
-    { model: 'gemini-1.5-flash', systemInstruction: SYSTEM },
+    { model: 'gemini-1.5-flash' },
     { apiVersion: 'v1' }
   );
 
   try {
-    const result = await model.generateContent(`Juego: ${game.trim()}`);
+    const result = await model.generateContent(`${SYSTEM}\n\nJuego: ${game.trim()}`);
     let txt = result.response.text().trim();
     txt = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
     const a = txt.indexOf('{'), z = txt.lastIndexOf('}');
