@@ -86,18 +86,26 @@
   .btn.sm{padding:7px 13px;font-size:.8rem}
 
   /* Game grid */
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px}
   .card{
     background:linear-gradient(160deg,var(--panel),var(--bg2));
     border:1px solid var(--line);border-radius:var(--radius);
-    padding:22px;cursor:pointer;transition:.22s;position:relative;overflow:hidden;
+    padding:0;cursor:pointer;transition:.22s;position:relative;overflow:hidden;
+    display:flex;flex-direction:column;
   }
-  .card::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,transparent,rgba(232,116,59,.06));opacity:0;transition:.22s}
+  .card::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,transparent,rgba(232,116,59,.06));opacity:0;transition:.22s;z-index:1}
   .card:hover{transform:translateY(-3px);border-color:var(--accent)}
   .card:hover::before{opacity:1}
-  .card h3{font-family:'Fraunces',serif;font-size:1.25rem;font-weight:600;margin-bottom:6px;position:relative}
-  .card .meta{color:var(--ink-soft);font-size:.82rem;position:relative;display:flex;gap:14px;flex-wrap:wrap}
+  .card-cover{width:100%;height:150px;object-fit:cover;object-position:center top;display:block;background:var(--panel2)}
+  .card-cover-ph{width:100%;height:150px;background:linear-gradient(160deg,var(--panel2),var(--bg2));display:flex;align-items:center;justify-content:center;font-size:2.2rem;color:var(--line)}
+  .card-body{padding:18px;position:relative;z-index:2;flex:1}
+  .card h3{font-family:'Fraunces',serif;font-size:1.15rem;font-weight:600;margin-bottom:6px}
+  .card .meta{color:var(--ink-soft);font-size:.82rem;display:flex;gap:14px;flex-wrap:wrap}
   .card .meta b{color:var(--accent2);font-weight:700}
+  .detail-img{width:150px;border-radius:10px;object-fit:cover;flex-shrink:0;align-self:flex-start}
+  .img-row{display:flex;align-items:center;gap:8px;margin-top:6px}
+  .img-row input{flex:1}
+  .img-row .btn{white-space:nowrap;flex-shrink:0}
   .empty{text-align:center;padding:70px 20px;color:var(--ink-soft)}
   .empty .big{font-size:2.4rem;margin-bottom:10px;opacity:.5}
 
@@ -322,6 +330,11 @@
     <label>Categorías de puntuación <span class="note">(separadas por comas — se usarán como cuadrícula al registrar partidas)</span></label>
     <input id="g-cats" placeholder="TR, Recompensas, Hitos, Tablero, Cartas">
     <div class="note">Déjalo vacío para puntuar con un solo total.</div>
+    <label>Imagen de portada</label>
+    <div class="img-row">
+      <input id="g-image" placeholder="Se busca automáticamente en BoardGameGeek">
+      <button type="button" class="btn ghost sm" id="g-img-search-btn" onclick="fetchImageForModal()">🔍 BGG</button>
+    </div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal('game-overlay')">Cancelar</button>
       <button class="btn" id="game-save-btn" onclick="saveGame()">Guardar</button>
@@ -365,6 +378,7 @@
 let db = null;
 const DB = { games: [], matches: [], players: [] };
 let currentUser = null;
+let currentDetailId = null;
 const ADMIN_EMAIL = 'jagovillora@gmail.com';
 const isAdmin = () => currentUser?.email === ADMIN_EMAIL;
 const isAuth  = () => currentUser !== null;
@@ -666,13 +680,20 @@ function renderGames() {
   el.className = 'grid';
   el.innerHTML = games.map(g => {
     const plays = DB.matches.filter(m => m.game_id === g.id).length;
+    const imgHtml = g.image
+      ? `<img src="${esc(g.image)}" class="card-cover" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'card-cover-ph',textContent:'🎲'}))">`
+      : `<div class="card-cover-ph">🎲</div>`;
     return `<div class="card" onclick="showDetail('${g.id}')">
-      <h3>${esc(g.name)}</h3>
-      <div class="meta">${g.meta ? `<span>${esc(g.meta)}</span>` : ''}<span><b>${plays}</b> partidas</span></div>
+      ${imgHtml}
+      <div class="card-body">
+        <h3>${esc(g.name)}</h3>
+        <div class="meta">${g.meta ? `<span>${esc(g.meta)}</span>` : ''}<span><b>${plays}</b> partidas</span></div>
+      </div>
     </div>`;
   }).join('');
 }
 function showDetail(id) {
+  currentDetailId = id;
   const g = DB.games.find(x => x.id === id); if (!g) return;
   const plays = [...DB.matches.filter(m => m.game_id === id)].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const matchHistoryHtml = plays.length ? `
@@ -692,10 +713,15 @@ function showDetail(id) {
   v.innerHTML = `
     <button class="btn ghost sm" onclick="goView('games')">← Volver</button>
     <div class="detail-card" style="margin-top:16px">
-      <h2>${esc(g.name)}</h2>
-      <div class="pill-row">
-        ${g.meta ? `<span class="pill">${esc(g.meta)}</span>` : ''}
-        <span class="pill">${plays.length} partidas jugadas</span>
+      <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:4px">
+        ${g.image ? `<img src="${esc(g.image)}" class="detail-img" loading="lazy" onerror="this.style.display='none'">` : ''}
+        <div style="flex:1;min-width:180px">
+          <h2>${esc(g.name)}</h2>
+          <div class="pill-row">
+            ${g.meta ? `<span class="pill">${esc(g.meta)}</span>` : ''}
+            <span class="pill">${plays.length} partidas jugadas</span>
+          </div>
+        </div>
       </div>
       ${block('Instrucciones / reglas', g.rules)}
       ${block('Puesta en mesa', g.setup)}
@@ -722,34 +748,61 @@ function openGameModal(id) {
     t.textContent = 'Editar juego';
     F('id').value = g.id; F('name').value = g.name; F('meta').value = g.meta || '';
     F('rules').value = g.rules || ''; F('setup').value = g.setup || ''; F('notes').value = g.notes || '';
-    F('cats').value = (g.cats || []).join(', ');
+    F('cats').value = (g.cats || []).join(', '); F('image').value = g.image || '';
   } else {
     t.textContent = 'Añadir juego';
-    ['id', 'name', 'meta', 'rules', 'setup', 'notes', 'cats'].forEach(k => F(k).value = '');
+    ['id', 'name', 'meta', 'rules', 'setup', 'notes', 'cats', 'image'].forEach(k => F(k).value = '');
   }
 }
 async function saveGame() {
   const F = k => document.getElementById('g-' + k);
   const name = F('name').value.trim(); if (!name) { toast('Pon un nombre al juego', 'err'); return; }
   const cats = F('cats').value.split(',').map(s => s.trim()).filter(Boolean);
-  const data = { name, meta: F('meta').value.trim(), rules: F('rules').value.trim(), setup: F('setup').value.trim(), notes: F('notes').value.trim(), cats };
+  const image = F('image').value.trim();
+  const data = { name, meta: F('meta').value.trim(), rules: F('rules').value.trim(), setup: F('setup').value.trim(), notes: F('notes').value.trim(), cats, image };
   const gid = F('id').value;
   const btn = document.getElementById('game-save-btn');
   btn.disabled = true;
   try {
+    let savedGame;
     if (gid) {
-      const g = DB.games.find(x => x.id === gid);
-      Object.assign(g, data);
-      await dbUpdateGame(g);
+      savedGame = DB.games.find(x => x.id === gid);
+      Object.assign(savedGame, data);
+      await dbUpdateGame(savedGame);
     } else {
-      const g = { id: uid(), ...data };
-      DB.games.push(g);
-      await dbAddGame(g);
+      savedGame = { id: uid(), ...data };
+      DB.games.push(savedGame);
+      await dbAddGame(savedGame);
     }
     closeModal('game-overlay'); renderGames(); refreshGameSelects(); renderRanking();
     toast(gid ? 'Juego actualizado' : `"${name}" añadido a la biblioteca`);
+    if (!image) fetchAndSaveImage(savedGame);
   } catch(e) { toast('Error al guardar: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
+}
+async function fetchAndSaveImage(game) {
+  try {
+    const res = await fetch(`/api/game-image?name=${encodeURIComponent(game.name)}`);
+    const { image } = await res.json();
+    if (!image) return;
+    game.image = image;
+    await dbUpdateGame(game);
+    renderGames();
+    if (currentDetailId === game.id) showDetail(game.id);
+  } catch { /* imagen opcional, fallo silencioso */ }
+}
+async function fetchImageForModal() {
+  const name = document.getElementById('g-name').value.trim();
+  if (!name) { toast('Escribe el nombre del juego primero', 'err'); return; }
+  const btn = document.getElementById('g-img-search-btn');
+  btn.textContent = 'Buscando…'; btn.disabled = true;
+  try {
+    const res = await fetch(`/api/game-image?name=${encodeURIComponent(name)}`);
+    const { image } = await res.json();
+    if (image) { document.getElementById('g-image').value = image; toast('Imagen encontrada'); }
+    else toast('No se encontró en BGG', 'err');
+  } catch { toast('Error al buscar imagen', 'err'); }
+  finally { btn.textContent = '🔍 BGG'; btn.disabled = false; }
 }
 async function delGame(id) {
   if (!confirm('¿Eliminar el juego? (no borra las partidas registradas)')) return;
@@ -804,7 +857,7 @@ async function importFromPdf() {
 
     const obj = result.game;
     const cats = Array.isArray(obj.cats) ? obj.cats.map(c => ('' + c).trim()).filter(Boolean) : [];
-    const g = { id: uid(), name: (obj.name || '').toString().trim(), meta: (obj.meta || '').toString().trim(), rules: (obj.rules || '').toString().trim(), setup: (obj.setup || '').toString().trim(), notes: (obj.notes || '').toString().trim(), cats };
+    const g = { id: uid(), name: (obj.name || '').toString().trim(), meta: (obj.meta || '').toString().trim(), rules: (obj.rules || '').toString().trim(), setup: (obj.setup || '').toString().trim(), notes: (obj.notes || '').toString().trim(), cats, image: '' };
     if (!g.name) throw new Error('No pude identificar el nombre del juego en el PDF.');
 
     await dbAddGame(g);
@@ -812,6 +865,7 @@ async function importFromPdf() {
     closeModal('pdf-overlay');
     renderGames(); refreshGameSelects(); renderRanking();
     toast(`"${g.name}" añadido. Échale un ojo y edítalo si quieres ajustar algo.`);
+    fetchAndSaveImage(g);
   } catch(e) {
     st.textContent = '⚠️ ' + e.message;
   } finally {

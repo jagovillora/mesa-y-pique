@@ -7,7 +7,8 @@ create table if not exists games (
   rules text default '',
   setup text default '',
   notes text default '',
-  cats  jsonb default '[]'
+  cats  jsonb default '[]',
+  image text default ''
 );
 
 create table if not exists matches (
