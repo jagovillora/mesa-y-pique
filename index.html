@@ -666,8 +666,8 @@ function updateAuthUI() {
     btn.onclick = signIn;
     chip.style.display = 'none';
   }
-  document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin() ? '' : 'none');
-  document.querySelectorAll('.auth-only').forEach(el  => el.style.display = isAuth()  ? '' : 'none');
+  document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin() ? 'block' : 'none');
+  document.querySelectorAll('.auth-only').forEach(el  => el.style.display = isAuth()  ? 'block' : 'none');
 }
 
 /* NAV */
