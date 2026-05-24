@@ -503,9 +503,24 @@ async function dbDeletePlayer(n)  {
 async function dbSaveRankMode(m)  { await db.from('settings').upsert({ key: 'rankmode', value: m }); }
 
 /* ── AVATARES ── */
-const AV_COLORS = ['#c0392b','#8e44ad','#2471a3','#1e8449','#d68910','#cb4335','#117a65','#1a5276','#6e2f8b'];
-function avColor(name) { let h=0; for(const c of name) h=(h*31+c.charCodeAt(0))&0xffffffff; return AV_COLORS[Math.abs(h)%AV_COLORS.length]; }
-function avInitials(name) { return name.split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+const AV_COLORS = [
+  '#c0392b','#8e44ad','#2471a3','#1e8449','#d68910','#1a5276',
+  '#117a65','#6e2f8b','#922b21','#1d8348','#7d6608','#4a235a',
+  '#154360','#0e6655','#784212','#512e5f','#b03a2e','#196f3d',
+  '#7e5109','#4d5656','#2e4057','#a04000','#6c3483','#145a32',
+  '#1b4f72','#7b241c','#4a235a','#0e6655','#1a5276','#196f3d'
+];
+function avColor(name) {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) h = Math.imul(h, 33) ^ name.charCodeAt(i);
+  h ^= name.length * 1000003;
+  return AV_COLORS[Math.abs(h) % AV_COLORS.length];
+}
+function avInitials(name) {
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return (name[0] + (name[1] || '')).toUpperCase();
+}
 
 function avHtml(name, size='md') {
   const url = DB.avatars[name];
