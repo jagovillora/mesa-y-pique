@@ -117,9 +117,9 @@
   .podium{display:flex;align-items:flex-end;gap:12px;margin:8px 0 36px}
   .pod{
     flex:1;background:linear-gradient(180deg,var(--panel2),var(--panel));
-    border:1px solid var(--line2);border-radius:16px;padding:22px 14px;
+    border:1px solid var(--line2);border-radius:16px;padding:22px 14px 18px;
     text-align:center;position:relative;overflow:hidden;
-    animation:fade .5s ease backwards;
+    animation:fade .5s ease backwards;display:flex;flex-direction:column;align-items:center;
   }
   .pod:nth-child(1){animation-delay:.08s;min-height:148px}
   .pod:nth-child(2){animation-delay:0s;min-height:186px;flex:1.15}
@@ -214,13 +214,24 @@
   /* ── PLAYERS ── */
   .add-player-bar{display:flex;gap:10px;margin-bottom:24px;max-width:440px}
   .add-player-bar input{flex:1}
-  .players-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
-  .pchip{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(160deg,var(--panel),var(--bg2));border:1px solid var(--line2);border-radius:14px;padding:15px 18px;transition:.22s;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+  .players-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .pchip{display:flex;align-items:center;gap:14px;justify-content:space-between;background:linear-gradient(160deg,var(--panel),var(--bg2));border:1px solid var(--line2);border-radius:14px;padding:14px 16px;transition:.22s;box-shadow:0 2px 10px rgba(0,0,0,.25)}
   .pchip:hover{border-color:rgba(232,116,59,.3);box-shadow:0 6px 20px rgba(0,0,0,.35);transform:translateY(-2px)}
   .pchip .pn{font-weight:700}
   .pchip .px{background:transparent;border:none;color:var(--ink-muted);cursor:pointer;font-size:.95rem;padding:2px 6px;border-radius:6px;transition:.15s}
   .pchip .px:hover{color:var(--accent)}
   .pchip .pstat{font-size:.74rem;color:var(--ink-soft);margin-top:2px}
+  /* Avatares */
+  .av{width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--line2);transition:.2s}
+  .av-ini{width:44px;height:44px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff;border:2px solid var(--line2);transition:.2s;cursor:pointer;user-select:none}
+  .av-wrap{position:relative;flex-shrink:0;cursor:pointer}
+  .av-wrap:hover .av,.av-wrap:hover .av-ini{border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,116,59,.25)}
+  .av-wrap .av-edit{position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-size:.7rem;opacity:0;transition:.18s;pointer-events:none}
+  .av-wrap:hover .av-edit{opacity:1}
+  .av-sm{width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;border:1.5px solid var(--line2);flex-shrink:0}
+  .av-sm-ini{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:.62rem;color:#fff;vertical-align:middle;border:1.5px solid var(--line2);flex-shrink:0}
+  .pod-av{width:60px;height:60px;border-radius:50%;object-fit:cover;border:3px solid var(--line2);margin:0 auto 8px;display:block}
+  .pod-av-ini{width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.5rem;color:#fff;border:3px solid var(--line2);margin:0 auto 8px}
   .filter-bar{margin-bottom:20px}
   .filter-bar select{max-width:280px}
   .note{font-size:.78rem;color:var(--ink-soft);margin-top:6px;line-height:1.5}
@@ -417,7 +428,7 @@
 
 <script>
 let db = null;
-const DB = { games: [], matches: [], players: [] };
+const DB = { games: [], matches: [], players: [], avatars: {} };
 let currentUser = null;
 let currentDetailId = null;
 const ADMIN_EMAIL = 'jagovillora@gmail.com';
@@ -439,11 +450,12 @@ async function initSupabase() {
 async function load() {
   await initSupabase();
 
-  const [gamesRes, matchesRes, playersRes, settingsRes] = await Promise.allSettled([
+  const [gamesRes, matchesRes, playersRes, settingsRes, avatarsRes] = await Promise.allSettled([
     db.from('games').select('*'),
     db.from('matches').select('*'),
     db.from('players').select('name'),
-    db.from('settings').select('value').eq('key', 'rankmode').single()
+    db.from('settings').select('value').eq('key', 'rankmode').single(),
+    db.from('settings').select('value').eq('key', 'avatars').single()
   ]);
 
   DB.games   = gamesRes.status   === 'fulfilled' ? (gamesRes.value.data   || []) : [];
@@ -452,6 +464,11 @@ async function load() {
 
   const sv = settingsRes.status === 'fulfilled' ? settingsRes.value.data : null;
   if (sv && (sv.value === 'points' || sv.value === 'wins')) RANK_MODE = sv.value;
+
+  try {
+    const av = avatarsRes.status === 'fulfilled' ? avatarsRes.value.data : null;
+    if (av?.value) DB.avatars = JSON.parse(av.value);
+  } catch(e) { /* avatars not critical */ }
 
   try { await seedIfEmpty(); } catch(e) { console.warn('seed', e); }
 
@@ -485,6 +502,69 @@ async function dbDeletePlayer(n)  {
 }
 async function dbSaveRankMode(m)  { await db.from('settings').upsert({ key: 'rankmode', value: m }); }
 
+/* ── AVATARES ── */
+const AV_COLORS = ['#c0392b','#8e44ad','#2471a3','#1e8449','#d68910','#cb4335','#117a65','#1a5276','#6e2f8b'];
+function avColor(name) { let h=0; for(const c of name) h=(h*31+c.charCodeAt(0))&0xffffffff; return AV_COLORS[Math.abs(h)%AV_COLORS.length]; }
+function avInitials(name) { return name.split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+
+function avHtml(name, size='md') {
+  const url = DB.avatars[name];
+  if (size === 'sm') {
+    return url
+      ? `<img src="${esc(url)}" class="av-sm" alt="${esc(name)}">`
+      : `<span class="av-sm-ini" style="background:${avColor(name)}">${avInitials(name)}</span>`;
+  }
+  if (size === 'pod') {
+    return url
+      ? `<img src="${esc(url)}" class="pod-av" alt="${esc(name)}">`
+      : `<div class="pod-av-ini" style="background:${avColor(name)}">${avInitials(name)}</div>`;
+  }
+  // md — clicable para subir
+  const inner = url
+    ? `<img src="${esc(url)}" class="av" alt="${esc(name)}">`
+    : `<div class="av-ini" style="background:${avColor(name)}">${avInitials(name)}</div>`;
+  return `<div class="av-wrap" onclick="pickAvatar('${esc(name).replace(/'/g,"\\'")}')">
+    ${inner}<div class="av-edit">📷</div>
+  </div>`;
+}
+
+function pickAvatar(name) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = async () => {
+    const file = inp.files[0]; if (!file) return;
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const canvas = document.createElement('canvas');
+        const img = new Image();
+        img.onload = () => {
+          const max = 300;
+          let w = img.width, h = img.height;
+          if (w > h) { if (w > max) { h = h*max/w; w = max; } }
+          else { if (h > max) { w = w*max/h; h = max; } }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          res(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+        };
+        img.onerror = rej;
+        img.src = URL.createObjectURL(file);
+      });
+      toast('Subiendo foto…');
+      const r = await fetch('/api/avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, imageBase64: base64, mimeType: 'image/jpeg' })
+      });
+      if (!r.ok) throw new Error((await r.json()).error);
+      const { url } = await r.json();
+      DB.avatars[name] = url;
+      renderPlayers(); renderRanking(); renderMatches();
+      toast('Foto actualizada');
+    } catch(e) { toast('Error al subir: ' + e.message, 'err'); }
+  };
+  inp.click();
+}
+
 function renderPlayers() {
   const el = document.getElementById('players-list');
   if (!DB.players.length) { el.className = ''; el.innerHTML = `<div class="empty"><div class="big">👥</div><p>Sin jugadores. Añade los nombres del grupo.</p></div>`; return; }
@@ -496,7 +576,7 @@ function renderPlayers() {
       const top = Math.max(...m.players.map(p => p.score));
       return m.players.find(p => p.name === n)?.score === top;
     }).length;
-    return `<div class="pchip"><div><div class="pn">${esc(n)}</div><div class="pstat">${played} partidas · ${wins} victorias</div></div>${isAdmin() ? `<button class="px" onclick="delPlayer('${esc(n).replace(/'/g, "\\'")}')" title="Eliminar">✕</button>` : ''}</div>`;
+    return `<div class="pchip">${avHtml(n,'md')}<div style="flex:1;min-width:0"><div class="pn">${esc(n)}</div><div class="pstat">${played} partidas · ${wins} victorias</div></div>${isAdmin() ? `<button class="px" onclick="delPlayer('${esc(n).replace(/'/g, "\\'")}')" title="Eliminar">✕</button>` : ''}</div>`;
   }).join('');
 }
 async function addPlayer() {
@@ -1158,7 +1238,7 @@ function renderMatches() {
           ${m.photo ? `<img src="${esc(m.photo)}" class="match-photo" onclick="openPhotoLightbox('${esc(m.photo)}')" title="Ver foto del tablero">` : ''}
         </div>
       </div>
-      <div class="scores">${ps.map(p => `<span class="sc${p.score === max ? ' win' : ''}">${p.score === max ? '👑 ' : ''}${esc(p.name)} · ${p.score}</span>`).join('')}</div>
+      <div class="scores">${ps.map(p => `<span class="sc${p.score === max ? ' win' : ''}" style="display:inline-flex;align-items:center;gap:5px">${p.score === max ? '👑 ' : ''}${avHtml(p.name,'sm')}${esc(p.name)} · ${p.score}</span>`).join('')}</div>
       ${ps.some(p => p.breakdown) ? `<div class="breakdown">${ps.map(p => p.breakdown ? `<span class="bd"><b>${esc(p.name)}:</b> ${Object.entries(p.breakdown).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')}</span>` : '').join('')}</div>` : ''}
     </div>`;
   }).join('');
@@ -1209,13 +1289,13 @@ function renderRanking() {
   const order = [1, 0, 2];
   const podHtml = order.filter(i => podium[i]).map(i => {
     const p = podium[i]; const cls = ['p1','p2','p3'][i]; const medal = ['🥇','🥈','🥉'][i];
-    return `<div class="pod ${cls}"><div class="rank">${medal}</div><div class="nm">${esc(p.name)}</div><div class="pts">${metric(p)}</div></div>`;
+    return `<div class="pod ${cls}"><div class="rank">${medal}</div>${avHtml(p.name,'pod')}<div class="nm">${esc(p.name)}</div><div class="pts">${metric(p)}</div></div>`;
   }).join('');
   const hi = RANK_MODE === 'points' ? 'Pts' : 'Victorias';
   body.innerHTML = `
     ${podium.length >= 1 ? `<div class="podium">${podHtml}</div>` : ''}
     <table><thead><tr><th>#</th><th>Jugador</th><th>${hi}</th><th>Victorias</th><th>Partidas</th><th>Σ Puntos</th></tr></thead>
-    <tbody>${arr.map((p, i) => `<tr class="${i === 0 ? 'crown-row' : ''}"><td class="pos">${i === 0 ? '👑' : i + 1}</td><td><b>${esc(p.name)}</b></td><td><b>${RANK_MODE === 'points' ? p.pts : p.wins}</b></td><td>${p.wins}</td><td>${p.played}</td><td>${p.totalScore}</td></tr>`).join('')}</tbody></table>`;
+    <tbody>${arr.map((p, i) => `<tr class="${i === 0 ? 'crown-row' : ''}"><td class="pos">${i === 0 ? '👑' : i + 1}</td><td><div style="display:flex;align-items:center;gap:8px">${avHtml(p.name,'sm')}<b>${esc(p.name)}</b></div></td><td><b>${RANK_MODE === 'points' ? p.pts : p.wins}</b></td><td>${p.wins}</td><td>${p.played}</td><td>${p.totalScore}</td></tr>`).join('')}</tbody></table>`;
 }
 
 /* Utils */
