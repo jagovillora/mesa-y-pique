@@ -475,8 +475,14 @@ async function dbUpdateGame(game) { const { error } = await db.from('games').upd
 async function dbDeleteGame(id)   { const { error } = await db.from('games').delete().eq('id', id); if(error) throw error; }
 async function dbAddMatch(match)  { const { error } = await db.from('matches').insert(match); if(error) throw error; }
 async function dbDeleteMatch(id)  { const { error } = await db.from('matches').delete().eq('id', id); if(error) throw error; }
-async function dbAddPlayer(name)  { const { error } = await db.from('players').insert({ name }); if(error) throw error; }
-async function dbDeletePlayer(n)  { const { error } = await db.from('players').delete().eq('name', n); if(error) throw error; }
+async function dbAddPlayer(name)  {
+  const r = await fetch('/api/players', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name}) });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Error al añadir jugador'); }
+}
+async function dbDeletePlayer(n)  {
+  const r = await fetch(`/api/players?name=${encodeURIComponent(n)}`, { method:'DELETE' });
+  if (!r.ok) throw new Error('Error al eliminar jugador');
+}
 async function dbSaveRankMode(m)  { await db.from('settings').upsert({ key: 'rankmode', value: m }); }
 
 function renderPlayers() {
